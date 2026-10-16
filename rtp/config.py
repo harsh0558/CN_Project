@@ -12,21 +12,17 @@ FLAG_FIN: int = 0x04
 FLAG_DATA: int = 0x08
 FLAG_RST: int = 0x10
 
-# Valid flag combinations in the protocol:
-# - SYN (0x01): Connection initiation from client
-# - SYN | ACK (0x03): Handshake response from server
-# - ACK (0x02): Handshake ack, pure data ack, window probe ack, window update ack, final teardown ack
-# - DATA (0x08): Stream data packet, zero-window probe packet
-# - FIN (0x04): Teardown initiation from client
-# - FIN | ACK (0x06): Teardown response from server with SHA-256 verification status
-VALID_FLAG_COMBINATIONS: frozenset[int] = frozenset({
-    FLAG_SYN,
-    FLAG_SYN | FLAG_ACK,
-    FLAG_ACK,
-    FLAG_DATA,
-    FLAG_FIN,
-    FLAG_FIN | FLAG_ACK,
-})
+# Accepted flag combinations explicitly allowed in the RTP protocol:
+ACCEPTED_FLAG_COMBINATIONS: dict[int, str] = {
+    FLAG_SYN: "SYN (Connection request)",
+    FLAG_SYN | FLAG_ACK: "SYN|ACK (Connection response)",
+    FLAG_ACK: "ACK (Pure acknowledgment)",
+    FLAG_DATA: "DATA (Stream data packet or zero-window probe)",
+    FLAG_FIN: "FIN (Connection teardown request)",
+    FLAG_FIN | FLAG_ACK: "FIN|ACK (Teardown response with status)",
+}
+
+VALID_FLAG_COMBINATIONS: frozenset[int] = frozenset(ACCEPTED_FLAG_COMBINATIONS.keys())
 
 # Window and buffer limits (in packets)
 DEFAULT_RECEIVER_CAPACITY: int = 64  # R

@@ -48,24 +48,28 @@ RTP operates directly on top of UDP datagrams. Every RTP datagram begins with an
 
 **Total Header Size**: 26 bytes (struct format `!IIIIHBBHI`).
 
-### 1.3 Control Flags
+### 1.3 Control Flags and Accepted Combinations
 
 Flags are encoded as a single byte bitfield:
-
 - `FLAG_SYN` (`0x01`): Synchronize sequence numbers; initiates connection.
 - `FLAG_ACK` (`0x02`): Acknowledgment field valid; acknowledges received packets.
 - `FLAG_FIN` (`0x04`): Finished sending data; initiates teardown.
 - `FLAG_DATA` (`0x08`): Packet contains stream payload (or zero-window probe).
 - `FLAG_RST` (`0x10`): Reset connection (reserved for error aborts, not used in core protocol).
 
-#### Valid Flag Combinations
-No other combinations are allowed. Piggybacking data and ACK is explicitly forbidden:
-1. `SYN` (`0x01`): Initial client connection request.
-2. `SYN | ACK` (`0x03`): Server response accepting connection.
-3. `ACK` (`0x02`): Handshake completion, data ACK, window probe response, or teardown ACK.
-4. `DATA` (`0x08`): Data packet carrying application byte payload or zero-window probe.
-5. `FIN` (`0x04`): Client initiating connection close.
-6. `FIN | ACK` (`0x06`): Server confirming delivery and carrying 1-byte SHA-256 verification status.
+#### Accepted Flag Combinations Table
+Only the following six flag combinations are recognized and accepted by the protocol:
+
+| Flag Bitmask | Hex Value | Name / Combination | Payload Length Constraints | Protocol Role |
+| :--- | :--- | :--- | :--- | :--- |
+| `0b00000001` | `0x01` | `SYN` | Exactly 0 bytes (`length == 0`) | Connection establishment request from client |
+| `0b00000011` | `0x03` | `SYN \| ACK` | Exactly 0 bytes (`length == 0`) | Connection acceptance reply from server (carries initial `rwnd`) |
+| `0b00000010` | `0x02` | `ACK` | Exactly 0 bytes (`length == 0`) | Pure cumulative + selective ACK, probe response, or teardown ACK |
+| `0b00001000` | `0x08` | `DATA` | 0 to 1024 bytes | Application file stream chunks ($1..1024$) OR zero-window probe ($0$) |
+| `0b00000100` | `0x04` | `FIN` | Exactly 0 bytes (`length == 0`) | Connection teardown request from client |
+| `0b00000110` | `0x06` | `FIN \| ACK` | Exactly 1 byte (`length == 1`) | Server teardown response carrying 1-byte SHA-256 verification status |
+
+Any other flag combinations (e.g., `0x00` empty flags, `0x10` standalone RST, `0x0A` piggybacked ACK\|DATA, `0x09` SYN\|DATA, `0x05` SYN\|FIN, undefined bits `0x20`/`0x40`/`0x80`, or `0xFF`) are **strictly disallowed** and will be rejected by `decode()` raising `PacketInvalidFlagsError`. Piggybacking of data and acknowledgments is explicitly forbidden.
 
 ### 1.4 Checksum Calculation & Validation
 The checksum is standard CRC-32 (`zlib.crc32`).
@@ -235,3 +239,21 @@ During project initialization, four specific architectural items were clarified 
 4. **SACK Bitmap Coverage vs. Window Size**:
    - The 32-bit `sack` bitmap covers sequence numbers `[ack + 1, ack + 32]`.
    - Packets arriving beyond `ack + 32` up to `max_window` (64) remain buffered in the receiver's window but are not reflected in the bitmap until `ack` advances. Correctness is fully preserved because per-packet ACKs and timeouts provide independent delivery guarantees.
+
+---
+
+## 8. Unresolved Items & Future Phase Considerations
+
+The following operational conditions and design trade-offs were identified during Phase 1 specification analysis and are noted for subsequent phases:
+
+1. **Zero-Window Probe Collision with In-Flight Packets**:
+   - A zero-window probe is transmitted with `seq = send_next`. If prior data packets remain in-flight while the receiver window closes to 0, probe ACKs carry `ack = rcv_base` and echo `seq = send_next`. Because `send_next` was never marked `IN_FLIGHT`, the probe ACK is not misconstrued as acknowledging unreceived data. Handlers in Phase 6 must ensure persist-timer probes do not mutate congestion state or sample RTT.
+2. **Simultaneous Connection Open**:
+   - The state machine specifies client active open (`SYN_SENT`) and server passive listen (`LISTEN` $\to$ `SYN_RCVD`). TCP's symmetric "simultaneous open" transition is omitted by design since the architecture is strictly client-to-server.
+3. **Non-Graceful Connection Reset (`RST`) Handling**:
+   - While `FLAG_RST` (`0x10`) is allocated in the flag bitfield, the core specification excludes RST handling from normal lifecycle operations, relying instead on the 30-second idle inactivity timeout and 10-timeout retransmission threshold to abort dead connections.
+4. **Path MTU and Datagram Fragmentation**:
+   - RTP fixes the maximum payload at 1024 bytes, giving a maximum UDP datagram size of $1024 + 26 = 1050$ bytes. Over standard Ethernet MTU (1500 bytes) with IPv4 headers (20 bytes) and UDP headers (8 bytes), the maximum frame size is 1078 bytes, comfortably avoiding IP fragmentation across standard routed Mininet links. Path MTU discovery is therefore omitted.
+5. **Windows Coarse Timer Resolution**:
+   - Windows default clock granularity is $\sim 15.6\text{ ms}$, whereas Linux provides sub-millisecond precision. Windows test runs in Phases 1–9 focus strictly on protocol logic, state transitions, and byte-level correctness; all timing-sensitive performance and goodput benchmarks are reserved for the Linux Mininet VM in Phase 10+.
+

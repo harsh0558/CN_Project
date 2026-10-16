@@ -218,6 +218,124 @@ def test_invalid_flags_rejected() -> None:
         Packet.decode(header2)
 
 
+def test_decode_accepts_data_with_length_zero() -> None:
+    """Requirement: decode() ACCEPTS DATA with length=0 (zero-window probe)."""
+    probe = Packet(
+        conn_id=42,
+        seq=10,
+        ack=0,
+        sack=0,
+        rwnd=64,
+        flags=FLAG_DATA,
+        payload=b"",
+    )
+    raw = probe.encode()
+    assert len(raw) == HEADER_SIZE
+    decoded = Packet.decode(raw)
+    assert decoded.flags == FLAG_DATA
+    assert decoded.payload == b""
+    assert len(decoded.payload) == 0
+
+
+def test_decode_accepts_fin_ack_with_one_byte_payload() -> None:
+    """Requirement: decode() ACCEPTS FIN|ACK with 1-byte payload (SHA-256 status byte)."""
+    for status_byte in (b"\x00", b"\x01"):
+        fin_ack = Packet(
+            conn_id=42,
+            seq=0,
+            ack=100,
+            sack=0,
+            rwnd=64,
+            flags=FLAG_FIN | FLAG_ACK,
+            payload=status_byte,
+        )
+        raw = fin_ack.encode()
+        assert len(raw) == HEADER_SIZE + 1
+        decoded = Packet.decode(raw)
+        assert decoded.flags == (FLAG_FIN | FLAG_ACK)
+        assert decoded.payload == status_byte
+        assert len(decoded.payload) == 1
+
+
+@pytest.mark.parametrize(
+    "flags,payload",
+    [
+        (FLAG_SYN, b""),
+        (FLAG_SYN | FLAG_ACK, b""),
+        (FLAG_ACK, b""),
+        (FLAG_FIN, b""),
+        (FLAG_DATA, b"Sample application data block"),
+    ],
+)
+def test_decode_accepts_standard_packet_types(flags: int, payload: bytes) -> None:
+    """Requirement: decode() ACCEPTS SYN, SYN|ACK, ACK, FIN, DATA."""
+    pkt = Packet(
+        conn_id=999,
+        seq=1,
+        ack=2,
+        sack=0,
+        rwnd=64,
+        flags=flags,
+        payload=payload,
+    )
+    raw = pkt.encode()
+    decoded = Packet.decode(raw)
+    assert decoded.flags == flags
+    assert decoded.payload == payload
+
+
+@pytest.mark.parametrize(
+    "invalid_flags",
+    [
+        0x00,                       # No flags set
+        FLAG_RST,                   # RST standalone (reserved in core)
+        FLAG_SYN | FLAG_DATA,       # SYN with DATA
+        FLAG_FIN | FLAG_DATA,       # FIN with DATA
+        FLAG_SYN | FLAG_FIN,        # SYN with FIN
+        FLAG_ACK | FLAG_DATA,       # ACK with DATA (no piggybacking)
+        FLAG_SYN | FLAG_ACK | FLAG_DATA,
+        FLAG_FIN | FLAG_ACK | FLAG_DATA,
+        FLAG_SYN | FLAG_FIN | FLAG_ACK,
+        0x20,                       # Undefined flag bit 5
+        0x40,                       # Undefined flag bit 6
+        0x80,                       # Undefined flag bit 7
+        0xFF,                       # All flag bits set
+    ],
+)
+def test_decode_rejects_disallowed_flag_combinations(invalid_flags: int) -> None:
+    """Requirement: decode() REJECTS flag combinations not part of protocol."""
+    # Compute CRC-32 manually to test decode flag rejection specifically
+    header_zero_crc = struct.pack(
+        HEADER_FORMAT,
+        1234,
+        0,
+        0,
+        0,
+        64,
+        invalid_flags,
+        0,
+        0,
+        0,
+    )
+    crc = struct.unpack("!I", struct.pack("!I", 0))[0]  # will be computed
+    import zlib
+    crc = zlib.crc32(header_zero_crc) & 0xFFFFFFFF
+    header = struct.pack(
+        HEADER_FORMAT,
+        1234,
+        0,
+        0,
+        0,
+        64,
+        invalid_flags,
+        0,
+        0,
+        crc,
+    )
+    with pytest.raises(PacketInvalidFlagsError):
+        Packet.decode(header)
+
+
 @pytest.mark.slow
 def test_fuzz_10000_random_byte_strings() -> None:
     """Requirement: 10,000 random byte strings produce only PacketError or a valid packet."""

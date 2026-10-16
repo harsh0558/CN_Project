@@ -20,6 +20,15 @@ Header Layout (26 bytes, big-endian '!IIIIHBBHI'):
  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  |                     payload (0 - 1024 bytes)                  |
  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+Accepted Flag Combinations:
+  - 0x01: SYN (Client connection initiation, payload length = 0)
+  - 0x03: SYN | ACK (Server connection response, payload length = 0)
+  - 0x02: ACK (Pure acknowledgment, payload length = 0)
+  - 0x08: DATA (Stream payload length 1-1024, or zero-window probe length = 0)
+  - 0x04: FIN (Client teardown request, payload length = 0)
+  - 0x06: FIN | ACK (Server teardown response with 1-byte status, length = 1)
+All other combinations are strictly rejected with PacketInvalidFlagsError.
 """
 
 from __future__ import annotations
@@ -30,6 +39,7 @@ from dataclasses import dataclass
 from typing import Final
 
 from rtp.config import (
+    ACCEPTED_FLAG_COMBINATIONS,
     FLAG_ACK,
     FLAG_DATA,
     FLAG_FIN,
