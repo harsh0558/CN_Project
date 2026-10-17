@@ -257,3 +257,151 @@ The following operational conditions and design trade-offs were identified durin
 5. **Windows Coarse Timer Resolution**:
    - Windows default clock granularity is $\sim 15.6\text{ ms}$, whereas Linux provides sub-millisecond precision. Windows test runs in Phases 1–9 focus strictly on protocol logic, state transitions, and byte-level correctness; all timing-sensitive performance and goodput benchmarks are reserved for the Linux Mininet VM in Phase 10+.
 
+---
+
+## 9. Application Stream Framing and Terminal Outcomes
+
+### 9.1 Stream Header Framing Format
+Every RTP file transfer stream begins with a binary application header followed immediately by the raw payload:
+
+```text
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|       filename_len (16)       |         filename ...          |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                                                               |
++                       file_size (64)                          +
+|                                                               |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                                                               |
++                   sha256_digest (256 bits)                    +
+|                           (32 bytes)                          |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                       payload data ...                        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+```
+
+- `filename_len`: 16-bit unsigned integer (`!H`) specifying the length of the UTF-8 filename.
+- `filename`: UTF-8 encoded filename bytes (without path elements).
+- `file_size`: 64-bit unsigned integer (`!Q`) specifying total payload length in bytes.
+- `sha256_digest`: Exactly 32 bytes representing the raw SHA-256 cryptographic digest of the complete file content.
+- `data`: Exact byte stream of length `file_size`.
+
+### 9.2 Atomic Delivery Semantics
+1. The receiver streams incoming payload data directly into a temporary file named `<name>.part`.
+2. The receiver maintains an incremental SHA-256 hash calculation across all arriving stream bytes.
+3. Upon receiving `FIN` and confirming total received bytes equals `file_size`:
+   - If computed SHA-256 matches `sha256_digest`, the receiver atomically renames `<name>.part` to `<name>` (`os.replace`) and responds with status byte `0x00` in `FIN|ACK`.
+   - If the digest fails to match, `<name>.part` is not renamed, no final file is created, and the receiver responds with status byte `0x01` in `FIN|ACK`.
+4. If the transfer is aborted or interrupted prematurely, only `<name>.part` remains on disk; no final `<name>` is created.
+
+### 9.3 Terminal Outcomes and CLI Exit Codes
+
+| Outcome | Exit Code | Teardown Status Byte | Condition |
+| :--- | :--- | :--- | :--- |
+| `success` | `0` | `0x00` (`STATUS_OK`) | File fully received, SHA-256 verified, atomically renamed to destination. |
+| `failed` | `1` | `0x01` (`STATUS_MISMATCH`) | Entire file delivered but SHA-256 checksum mismatch detected (or receiver rejected header). |
+| `timeout` | `2` | N/A | Connection establishment timed out (peer unreachable) OR maximum retransmission retries exceeded mid-transfer. |
+| `incomplete` | `3` | `0x01` or None | Transfer aborted or interrupted before all declared bytes were received; `.part` file remains. |
+
+#### Sender Outcome Specifications
+For the file sender, terminal states map precisely as follows:
+- **(a) Peer unreachable at handshake**: When the server is absent or fails to respond to 6 SYN attempts within the exponential backoff window, the sender reports outcome `timeout` and exits with code `2`.
+- **(b) Peer disappears mid-transfer**: When a transmitted DATA packet exhausts its maximum consecutive retransmissions (10 consecutive timeouts) without acknowledgment from the receiver, the sender aborts, reports outcome `timeout`, and exits with code `2`.
+- **(c) Receiver reports status 0x01**: When the stream completes but the receiver discovers a SHA-256 hash mismatch, declared size discrepancy, or rejected filename and responds with status byte `0x01` in `FIN|ACK`, the sender reports outcome `failed` and exits with code `1`.
+- **Distinction between `timeout` and `incomplete`**:
+  - `timeout` (exit code `2`) occurs strictly when progress halts due to timer expiration and retry limit exhaustion (server absent during SYN or peer disappearing mid-stream).
+  - `incomplete` (exit code `3`) occurs when a transfer terminates unexpectedly due to process cancellation, premature socket termination, stream truncation, or abnormal connection reset before all declared bytes are sent and verified.
+
+---
+
+## 10. Selective Repeat ARQ Specification (Phase 4)
+
+### 10.1 Sender Mechanics (`SelectiveRepeatSender`)
+1. **Window Span**:
+   - Packets are transmitted strictly under the sliding window constraint: a packet with sequence number `seq` may be transmitted if and only if $\text{seq} < send\_base + W$, where $W$ is a fixed configurable window size (default 16 packets).
+2. **Per-Packet State & Monotonic Deadlines**:
+   - Every packet slot inside the window is tracked in one of three states: `UNSENT`, `IN_FLIGHT`, or `ACKED`.
+   - Upon initial transmission or retransmission, `deadline = time.monotonic() + RTO` is armed for that specific packet slot.
+3. **Cumulative ACK & SACK Bitmap Processing**:
+   - `ack`: Advances `send_base` cumulatively. All packet slots strictly below `ack` transition to `ACKED`.
+   - `send_base` Progression: Once packets below `ack` or selectively acknowledged packets are marked `ACKED`, `send_base` slides forward past all contiguous `ACKED` slots at the front of the window. Fully acknowledged packet entries below the new `send_base` are garbage collected.
+   - `seq` (Echoed Sequence Number): The sender marks a packet `ACKED` from an ACK's echoed `seq` field **only** if that packet is currently in the `IN_FLIGHT` state. Echoes for `UNSENT` or already `ACKED` sequence numbers are ignored for marking.
+   - `sack` (SACK Bitmap): Bit $i$ ($0 \le i \le 31$, bit 0 is least significant) selectively acknowledges packet $ack + 1 + i$ if and only if that packet is currently `IN_FLIGHT`.
+   - Stale / duplicate ACKs: ACKs carrying $ack < send\_base$ or echoing non-in-flight sequence numbers are silently ignored without modifying sender state.
+4. **Selective Retransmission & Timers**:
+   - Uses fixed RTO from config (default $500\text{ ms}$).
+   - On timeout of an individual packet's deadline, **only that single packet is retransmitted**; the entire window is never retransmitted.
+   - Upon marking a packet `ACKED`, its per-packet timer is cleared.
+5. **Abort Conditions**:
+   - The sender aborts and raises `ConnectionAbortError` after $MAX\_CONSECUTIVE\_TIMEOUTS$ (10) consecutive timeouts of the same packet.
+   - The sender aborts and raises `ConnectionAbortError` after $IDLE\_TIMEOUT$ ($30.0\text{ s}$) without receiving any valid packet from the peer.
+6. **Graceful Teardown**:
+   - `FIN` is transmitted only after all application stream data has been cumulatively acknowledged ($send\_base == total\_chunks$).
+
+### 10.2 Receiver Mechanics (`SelectiveRepeatReceiver`)
+1. **Capacity & Window Acceptance**:
+   - Maintains an out-of-order buffer capacity $R$ (default 64 packets).
+   - Accepts sequence numbers in the half-open interval $[rcv\_base, rcv\_base + R)$. Packets with $seq \ge rcv\_base + R$ are dropped without buffering and counted in metrics (`dropped_beyond_window`).
+2. **Immediate Acknowledgment**:
+   - Every arriving `DATA` packet triggers an immediate `ACK` containing:
+     - `seq`: Echo of the received `DATA` packet's sequence number.
+     - `ack`: Current cumulative $rcv\_base$ (all sequence numbers below $rcv\_base$ delivered).
+     - `sack`: 32-bit SACK bitmap where bit $i$ is set if packet $rcv\_base + 1 + i$ is in the out-of-order buffer.
+     - `rwnd`: Current advertised receive capacity ($\max(0, R - |buffer|)$).
+3. **Contiguous Prefix Delivery**:
+   - When an in-order packet $seq == rcv\_base$ arrives, it is appended to the delivered queue, $rcv\_base$ increments, and any contiguous buffered packets immediately following are drained and delivered to the application in sequence.
+4. **Duplicates & Old Packets**:
+   - Any packet with $seq < rcv\_base$ or a sequence number already in the out-of-order buffer is recognized as a duplicate: it is immediately re-acknowledged, discarded without duplicate application delivery, and counted in metrics (`dup_received`).
+5. **Zero-Window Probes**:
+   - A `DATA` packet with payload length 0 is treated as a window probe: it is immediately acknowledged with the current $rcv\_base$ and $rwnd$, but is never buffered, never delivered to the application, does not advance $rcv\_base$, and is not counted as a duplicate.
+
+### 10.3 Telemetry Counters & Invariant
+Both sender and receiver expose standardized counters accessible via `get_counters()`:
+- Sender counters: `data_sent_total`, `unique_data_packets`, `retx_timeout`, `retx_total` (alias), `bytes_sent_total`, `max_in_flight`.
+- Receiver counters: `dup_received`, `ooo_received`, `dropped_beyond_window`.
+- **Core Invariant**:
+  $$\text{data\_sent\_total} == \text{unique\_data\_packets} + \text{retx\_total}$$
+  $$\text{retx\_total} == \text{retx\_timeout}$$
+
+---
+
+## 11. Adaptive RTO Estimator (Phase 5)
+
+RTP adapts the Jacobson/Karels algorithm (RFC 6298) for estimating round-trip time and updating retransmission timeout dynamically.
+
+### 11.1 Estimation Parameters & Update Rules
+- **Constants**:
+  - $\alpha = 1/8 = 0.125$
+  - $\beta = 1/4 = 0.250$
+  - $K = 4$
+  - Clock granularity $G = 1\text{ ms} = 0.001\text{ s}$
+  - Initial RTO: $1.0\text{ s}$
+  - RTO Clamping bounds: $[\text{MIN\_RTO}, \text{MAX\_RTO}] = [200\text{ ms}, 60.0\text{ s}]$
+- **First RTT Sample ($R$)**:
+  $$SRTT = R$$
+  $$RTTVAR = \frac{R}{2}$$
+  $$RTO = \text{clamp}(SRTT + \max(G, K \times RTTVAR), 0.2, 60.0)$$
+- **Subsequent RTT Samples ($R$)**:
+  $$RTTVAR = (1 - \beta) \times RTTVAR + \beta \times |SRTT - R|$$
+  $$SRTT = (1 - \alpha) \times SRTT + \alpha \times R$$
+  $$RTO = \text{clamp}(SRTT + \max(G, K \times RTTVAR), 0.2, 60.0)$$
+
+### 11.2 Karn's Algorithm
+- RTT is measured only from the ACK of an in-flight packet that has never been retransmitted (`retry_count == 0`).
+- When a packet times out and is retransmitted, any subsequent ACK matching that sequence number produces no RTT sample.
+- Timestamps are omitted from headers; RTT is computed from sender monotonic timestamps: $\text{sample\_rtt} = \text{time.monotonic}() - \text{packet.send\_time}$.
+
+### 11.3 Exponential Backoff & Loss-Epoch Gate
+- On timeout, exponential backoff doubles the current RTO multiplier ($backoff \leftarrow backoff \times 2$).
+- Upon receipt of a valid RTT sample, backoff resets to $1$.
+- **Loss-Epoch Gate**: At most one backoff occurs per loss epoch. An epoch begins on the first timeout and ends only when $send\_base$ advances past the highest sequence number sent at the time of the initial timeout ($epoch\_end\_seq = next\_seq\_num - 1$). This suppresses cascading backoff across multiple packets expiring from the same window flight.
+
+### 11.4 Trace Logging
+When `--run-dir` is provided, the sender records `rtt.csv` with the exact header:
+```text
+t,sample_rtt,srtt,rttvar,rto,backoff
+```
+where $t$ is monotonic elapsed seconds since transmission start, followed by the sample and updated estimator state.
+
