@@ -43,7 +43,7 @@ from rtp.rto import RtoEstimator
 logger = logging.getLogger("rtp.sender")
 
 DEFAULT_STOP_AND_WAIT_RTO: Final[float] = 0.5   # 500 ms
-DEFAULT_SR_WINDOW: Final[int] = 16               # packets
+DEFAULT_SR_WINDOW: Final[int] = 64               # packets
 DEFAULT_SR_RTO: Final[float] = 0.5              # 500 ms fixed
 
 
@@ -312,6 +312,7 @@ class SelectiveRepeatSender:
         self.dup_acks: int = 0
         self.bytes_sent_total: int = 0
         self.max_in_flight: int = 0
+        self._in_flight: int = 0   # packets currently IN_FLIGHT (O(1) bookkeeping)
 
     @property
     def rwnd(self) -> int:
@@ -373,20 +374,25 @@ class SelectiveRepeatSender:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _check_window_invariants(self) -> None:
-        """Record any in-flight packet whose sequence number violates right_edge."""
-        for p in self.packets.values():
-            if p.state == PacketState.IN_FLIGHT:
-                if p.seq >= self.right_edge:
-                    self.window_violations.append((p.seq, self.send_base, self.right_edge))
+    def _check_window_invariants(self, p: InFlightPacket) -> None:
+        """Record a violation if p is transmitted beyond right_edge.
+
+        right_edge never decreases, so checking at transmit time is sufficient.
+        """
+        if p.seq >= self.right_edge:
+            self.window_violations.append((p.seq, self.send_base, self.right_edge))
+
+    def _mark_acked(self, p: InFlightPacket) -> None:
+        """Mark an IN_FLIGHT packet ACKED and keep the in-flight counter exact."""
+        p.state = PacketState.ACKED
+        p.deadline = 0.0
+        self._in_flight -= 1
 
     def _log_cwnd(self, event: str) -> None:
         """Log cwnd transition to cwnd.csv if run_dir was specified."""
         now = time.monotonic()
         t = now - self._start_time
-        in_flight = sum(
-            1 for p in self.packets.values() if p.state == PacketState.IN_FLIGHT
-        )
+        in_flight = self._in_flight
         if self._cwnd_writer is not None:
             self._cwnd_writer.log(
                 t=t,
@@ -455,8 +461,10 @@ class SelectiveRepeatSender:
             packet_info.first_send_time = now
         packet_info.send_time = now
         packet_info.deadline = now + self.current_rto
+        if packet_info.state != PacketState.IN_FLIGHT:
+            self._in_flight += 1
         packet_info.state = PacketState.IN_FLIGHT
-        self._check_window_invariants()
+        self._check_window_invariants(packet_info)
 
         # Maintain counter invariant
         self.data_sent_total += 1
@@ -468,11 +476,8 @@ class SelectiveRepeatSender:
             self.retx_timeout += 1
 
         # Track peak simultaneous in-flight count
-        in_flight = sum(
-            1 for p in self.packets.values() if p.state == PacketState.IN_FLIGHT
-        )
-        if in_flight > self.max_in_flight:
-            self.max_in_flight = in_flight
+        if self._in_flight > self.max_in_flight:
+            self.max_in_flight = self._in_flight
 
     def _process_ack(self, ack_pkt: Packet) -> None:
         """Process a received ACK packet (cumulative + echoed-seq + SACK bitmap)."""
@@ -503,6 +508,7 @@ class SelectiveRepeatSender:
 
         newly_acked = 0
         saw_ss_exit = False
+        old_base = self.send_base
 
         # 1. Echoed-seq: Karn's rule & state update
         # Sample RTT only from the ACK of a packet that was never retransmitted (Karn)
@@ -537,8 +543,7 @@ class SelectiveRepeatSender:
                         )
                         self._rtt_csv_file.flush()
 
-            pkt_slot.state = PacketState.ACKED
-            pkt_slot.deadline = 0.0
+            self._mark_acked(pkt_slot)
             if self.cc.on_new_ack():
                 saw_ss_exit = True
             newly_acked += 1
@@ -553,8 +558,7 @@ class SelectiveRepeatSender:
                         sack_seq in self.packets
                         and self.packets[sack_seq].state == PacketState.IN_FLIGHT
                     ):
-                        self.packets[sack_seq].state = PacketState.ACKED
-                        self.packets[sack_seq].deadline = 0.0
+                        self._mark_acked(self.packets[sack_seq])
                         if self.cc.on_new_ack():
                             saw_ss_exit = True
                         newly_acked += 1
@@ -563,8 +567,7 @@ class SelectiveRepeatSender:
         if cum_ack > self.send_base:
             for s in range(self.send_base, min(cum_ack, self.next_seq_num)):
                 if s in self.packets and self.packets[s].state == PacketState.IN_FLIGHT:
-                    self.packets[s].state = PacketState.ACKED
-                    self.packets[s].deadline = 0.0
+                    self._mark_acked(self.packets[s])
                     if self.cc.on_new_ack():
                         saw_ss_exit = True
                     newly_acked += 1
@@ -592,11 +595,9 @@ class SelectiveRepeatSender:
             self.persist_interval = None
 
         # 5. Garbage-collect fully acknowledged entries strictly below send_base
-        for s in list(self.packets.keys()):
-            if s < self.send_base:
-                del self.packets[s]
+        for s in range(old_base, self.send_base):
+            self.packets.pop(s, None)
 
-        self._check_window_invariants()
 
         # Log cwnd event if any packet was newly ACKed (at most one row per ACK)
         if newly_acked > 0:
@@ -627,11 +628,11 @@ class SelectiveRepeatSender:
                     self.cc.on_timeout()
                     self._log_cwnd(event="timeout")
                 elif p.retry_count > self.loss_epoch_retry:
+                    # Same loss epoch, same packet lost again: back off RTO only.
+                    # cwnd/ssthresh were already reduced once for this epoch.
                     self.loss_epoch_end = self.next_seq_num - 1
                     self.loss_epoch_retry = p.retry_count
                     self.rto_estimator.on_timeout()
-                    self.cc.on_timeout()
-                    self._log_cwnd(event="timeout")
 
                 logger.debug(
                     "[SR] Retransmitting seq=%d (attempt %d/%d)",
