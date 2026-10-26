@@ -44,3 +44,18 @@ RTP adapts the Jacobson/Karels RTT estimation equations from RFC 6298, but inten
 - **Standard Transport**: Protocols handle 32-bit integer wraparound via modular arithmetic (e.g., RFC 1323 PAWS).
 - **RTP Deviation**: Sequence wraparound is intentionally unhandled.
 - **Rationale**: The target transfer is a 20 MB file, generating ~19,532 packets. A 32-bit sequence space supports $4,294,967,296$ packets, which could transfer $>4$ Terabytes before wraparound. A maximum file size limit is enforced.
+
+## 5. Congestion Control Differences (RFC 5681 and TCP Reno)
+- **Timeouts Only (No Fast Retransmit / Fast Recovery)**:
+  - *RFC 5681 / Reno*: 3 duplicate ACKs trigger Fast Retransmit and Fast Recovery without waiting for an RTO expiration.
+  - *RTP Deviation*: Packet loss is detected exclusively via per-packet RTO expiration. Duplicate ACKs and SACK bitmap arrivals mark received packets but never trigger early retransmission or enter Fast Recovery.
+  - *Rationale*: Aligns with the core specification requirement for pure Selective Repeat ARQ loss recovery before optional fast-recovery optimizations.
+- **Per-ACK Floating-Point Window Increase Rules**:
+  - *RFC 5681 / Reno*: CWND is byte-based and increased by SMSS during slow start or $\text{SMSS} \times \text{SMSS} / \text{CWND}$ during congestion avoidance per ACK.
+  - *RTP Deviation*: CWND is tracked as a floating-point number of packets. In slow start, `cwnd += 1.0` per newly acknowledged packet while `cwnd < ssthresh`. In congestion avoidance, `cwnd += 1.0 / cwnd` per newly acknowledged packet (AIMD linear growth adding $\sim 1$ packet per window of ACKs).
+  - *Rationale*: Eliminates byte-level window tracking complexity while providing smooth AIMD convergence on packet-switched topologies.
+- **Loss-Epoch Gating on Congestion Window Reductions**:
+  - *RFC 5681 / Reno*: Reduces CWND on every distinct timeout event.
+  - *RTP Deviation*: Timeout reductions (`ssthresh = max(floor(cwnd / 2), 2)`, `cwnd = 1.0`) are gated to at most once per loss epoch (ending when `send_base` passes the highest sequence number sent at the time of the initial timeout).
+  - *Rationale*: In Selective Repeat with per-packet timers, multiple packets in a dropped burst expire in quick succession. Halving `ssthresh` repeatedly across a single dropped flight would reduce `ssthresh` to 2 and collapse throughput unnecessarily.
+
