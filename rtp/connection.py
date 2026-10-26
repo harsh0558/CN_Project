@@ -508,6 +508,7 @@ class RtpClient:
                 )
                 self.transport.send_packet(ack_pkt, self.peer_addr)
                 self.stats.ack_sent += 1
+                self.status_received_at = time.monotonic()  # status received, before TIME_WAIT
                 self._transition_to(RtpState.TIME_WAIT)
                 break
             else:

@@ -202,7 +202,7 @@ class FileSender:
 
             # Graceful teardown: receive status byte from receiver
             status = client.close(timeout=self.timeout)
-            self._t_end = time.monotonic()  # final status received
+            self._t_end = getattr(client, "status_received_at", None) or time.monotonic()  # excludes TIME_WAIT
 
             if status == STATUS_OK:
                 print("success")
