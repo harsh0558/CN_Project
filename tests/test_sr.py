@@ -30,6 +30,7 @@ from rtp.config import (
     DEFAULT_RECEIVER_CAPACITY,
     FLAG_ACK,
     FLAG_DATA,
+    PROBE_ECHO_SEQ,
     STATUS_OK,
 )
 from rtp.connection import RtpClient, RtpConnection, RtpServer, RtpState
@@ -455,8 +456,12 @@ def test_receiver_rejects_seq_beyond_window():
     assert receiver.dropped_beyond_window == 1
     assert dummy_conn.stats.out_of_window_packets_count == 1
     assert receiver._delivered_queue == []
-    # No ACK should be sent for a packet dropped beyond window
-    assert len(dummy_conn.transport.sent) == 0
+    # Receiver sends a window-refresh ACK (echoed_seq=PROBE_ECHO_SEQ, ack=rcv_base, rwnd=current)
+    assert len(dummy_conn.transport.sent) == 1
+    refresh_ack = dummy_conn.transport.sent[0]
+    assert refresh_ack.seq == PROBE_ECHO_SEQ
+    assert refresh_ack.ack == receiver.rcv_base
+    assert refresh_ack.rwnd == receiver.rwnd
 
     # In-window out-of-order packet (seq=5) is accepted
     in_window_pkt = Packet(
@@ -471,8 +476,8 @@ def test_receiver_rejects_seq_beyond_window():
     receiver._process_data(in_window_pkt)
     assert 5 in receiver.buffer
     assert receiver.ooo_received == 1
-    assert len(dummy_conn.transport.sent) == 1
-    ack = dummy_conn.transport.sent[0]
+    assert len(dummy_conn.transport.sent) == 2
+    ack = dummy_conn.transport.sent[1]
     assert ack.flags == FLAG_ACK
     assert ack.ack == 0
     # Bit 4 in SACK bitmap corresponds to ack + 1 + 4 = 5

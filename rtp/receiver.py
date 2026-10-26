@@ -14,7 +14,13 @@ import time
 from pathlib import Path
 from typing import Generator
 
-from rtp.config import DEFAULT_RECEIVER_CAPACITY, FLAG_ACK, FLAG_DATA, FLAG_FIN
+from rtp.config import (
+    DEFAULT_RECEIVER_CAPACITY,
+    FLAG_ACK,
+    FLAG_DATA,
+    FLAG_FIN,
+    PROBE_ECHO_SEQ,
+)
 from rtp.connection import (
     ConnectionTimeoutError,
     RtpConnection,
@@ -277,7 +283,7 @@ class SelectiveRepeatReceiver:
         # --- Zero-window probe: DATA with length 0 ---
         if len(pkt.payload) == 0:
             # Must not buffer it, deliver it, advance rcv_base or count it as duplicate
-            self._send_ack(echoed_seq=seq)
+            self._send_ack(echoed_seq=PROBE_ECHO_SEQ)
             return
 
         # --- Old duplicate (below rcv_base) ---
@@ -295,6 +301,7 @@ class SelectiveRepeatReceiver:
             self.dropped_beyond_window += 1
             if hasattr(self.conn.stats, "out_of_window_packets_count"):
                 self.conn.stats.out_of_window_packets_count += 1
+            self._send_ack(echoed_seq=PROBE_ECHO_SEQ)
             return
 
         # --- In-window duplicate (already buffered) ---

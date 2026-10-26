@@ -27,6 +27,7 @@ from rtp.config import (
     MAX_CONSECUTIVE_TIMEOUTS,
     MAX_PAYLOAD_SIZE,
     PERSIST_TIMER_CAP,
+    PROBE_ECHO_SEQ,
 )
 from rtp.connection import (
     ConnectionAbortError,
@@ -34,6 +35,7 @@ from rtp.connection import (
     RtpConnection,
     RtpState,
 )
+from rtp.cwnd import CongestionControl
 from rtp.packet import Packet
 from rtp.rto import RtoEstimator
 
@@ -269,15 +271,25 @@ class SelectiveRepeatSender:
         self._start_time: float = 0.0
         self._rtt_csv_file = None
 
-        # Flow control: initialize rwnd from peer (e.g. from SYN|ACK), default to DEFAULT_RECEIVER_CAPACITY
+        # Flow control: initialize right_edge from peer (e.g. from SYN|ACK rwnd, ack=0)
         peer_rwnd = getattr(self.conn, "peer_rwnd", None)
-        self.rwnd: int = peer_rwnd if peer_rwnd is not None else DEFAULT_RECEIVER_CAPACITY
+        initial_rwnd = peer_rwnd if peer_rwnd is not None else DEFAULT_RECEIVER_CAPACITY
+        self.right_edge: int = initial_rwnd
         self.persist_deadline: float | None = (
-            (time.monotonic() + self.current_rto) if self.rwnd == 0 else None
+            (time.monotonic() + self.current_rto) if self.right_edge <= self.send_base else None
         )
-        self.persist_interval: float | None = self.current_rto if self.rwnd == 0 else None
+        self.persist_interval: float | None = (
+            self.current_rto if self.right_edge <= self.send_base else None
+        )
         self.probes_sent: int = 0
         self.window_violations: list[tuple[int, int, int]] = []
+
+        # Congestion control (units: packets, cwnd is a float)
+        self.cc: CongestionControl = CongestionControl(max_window=self.window_size)
+        self.limited_by_rwnd: int = 0
+        self.limited_by_cwnd: int = 0
+        self.limited_by_max: int = 0
+        self._cwnd_csv_file = None
 
         # Telemetry counters
         # Invariant: data_sent_total == unique_data_packets + retx_total
@@ -288,9 +300,16 @@ class SelectiveRepeatSender:
         self.max_in_flight: int = 0
 
     @property
+    def rwnd(self) -> int:
+        """Receive window available at peer: max(0, right_edge - send_base)."""
+        return max(0, self.right_edge - self.send_base)
+
+    @property
     def effective_window(self) -> int:
-        """Effective transmission window: min(rwnd, max_window)."""
-        return min(self.rwnd, self.window_size)
+        """Effective transmission window: min(right_edge - send_base, floor(cwnd), max_window)."""
+        rwnd_limit = max(0, self.right_edge - self.send_base)
+        cwnd_limit = self.cc.usable_window
+        return min(rwnd_limit, cwnd_limit, self.window_size)
 
     @property
     def current_rto(self) -> float:
@@ -338,11 +357,25 @@ class SelectiveRepeatSender:
     # ------------------------------------------------------------------
 
     def _check_window_invariants(self) -> None:
-        """Record any in-flight packet whose sequence number violates send_base + rwnd."""
+        """Record any in-flight packet whose sequence number violates right_edge."""
         for p in self.packets.values():
             if p.state == PacketState.IN_FLIGHT:
-                if p.seq >= self.send_base + self.rwnd:
-                    self.window_violations.append((p.seq, self.send_base, self.rwnd))
+                if p.seq >= self.right_edge:
+                    self.window_violations.append((p.seq, self.send_base, self.right_edge))
+
+    def _log_cwnd(self, event: str) -> None:
+        """Log cwnd transition to cwnd.csv if run_dir was specified."""
+        if self._cwnd_csv_file is not None:
+            now = time.monotonic()
+            t = now - self._start_time
+            in_flight = sum(
+                1 for p in self.packets.values() if p.state == PacketState.IN_FLIGHT
+            )
+            self._cwnd_csv_file.write(
+                f"{t:.6f},{self.cc.cwnd:.4f},{self.cc.ssthresh},{self.rwnd},"
+                f"{self.effective_window},{in_flight},{self.send_base},{event}\n"
+            )
+            self._cwnd_csv_file.flush()
 
     def _send_probe(self) -> None:
         """Transmit a zero-length DATA probe under zero-window condition.
@@ -425,9 +458,9 @@ class SelectiveRepeatSender:
         echoed_seq = ack_pkt.seq
         sack_bitmap = ack_pkt.sack
 
-        # Update advertised receive window from peer
-        self.rwnd = ack_pkt.rwnd
-        if self.rwnd > 0:
+        # Update right edge of advertised receive window from peer
+        self.right_edge = max(self.right_edge, ack_pkt.ack + ack_pkt.rwnd)
+        if self.right_edge > self.send_base:
             self.persist_deadline = None
             self.persist_interval = None
         else:
@@ -435,10 +468,13 @@ class SelectiveRepeatSender:
                 self.persist_interval = self.current_rto
                 self.persist_deadline = now + self.persist_interval
 
-        # An ACK answering a probe (echoing the next never-sent sequence number)
-        # must not mark any packet ACKED.
-        if ack_pkt.seq == self.next_seq_num:
+        # Probe replies and window refreshes echo PROBE_ECHO_SEQ:
+        # they refresh window information but must never mark any packet ACKED.
+        if ack_pkt.seq == PROBE_ECHO_SEQ:
             return
+
+        newly_acked = 0
+        saw_ss_exit = False
 
         # 1. Echoed-seq: Karn's rule & state update
         # Sample RTT only from the ACK of a packet that was never retransmitted (Karn)
@@ -465,6 +501,9 @@ class SelectiveRepeatSender:
 
             pkt_slot.state = PacketState.ACKED
             pkt_slot.deadline = 0.0
+            if self.cc.on_new_ack():
+                saw_ss_exit = True
+            newly_acked += 1
 
         # 2. SACK bitmap: bit i (0 = LSB) ⇒ cum_ack + 1 + i is selectively ACKed
         # Process SACK only if cum_ack >= send_base (not from a stale ACK)
@@ -478,13 +517,19 @@ class SelectiveRepeatSender:
                     ):
                         self.packets[sack_seq].state = PacketState.ACKED
                         self.packets[sack_seq].deadline = 0.0
+                        if self.cc.on_new_ack():
+                            saw_ss_exit = True
+                        newly_acked += 1
 
         # 3. Cumulative ACK: advance send_base; mark all packets below as ACKED
         if cum_ack > self.send_base:
             for s in range(self.send_base, min(cum_ack, self.next_seq_num)):
-                if s in self.packets:
+                if s in self.packets and self.packets[s].state == PacketState.IN_FLIGHT:
                     self.packets[s].state = PacketState.ACKED
                     self.packets[s].deadline = 0.0
+                    if self.cc.on_new_ack():
+                        saw_ss_exit = True
+                    newly_acked += 1
             self.send_base = cum_ack
 
         # 4. Advance send_base past any contiguous ACKED packets
@@ -499,12 +544,26 @@ class SelectiveRepeatSender:
             self.loss_epoch_end = None
             self.loss_epoch_retry = 0
 
+        # Maintain persist timer state after send_base advance
+        if self.right_edge <= self.send_base:
+            if self.persist_deadline is None:
+                self.persist_interval = self.current_rto
+                self.persist_deadline = now + self.persist_interval
+        else:
+            self.persist_deadline = None
+            self.persist_interval = None
+
         # 5. Garbage-collect fully acknowledged entries strictly below send_base
         for s in list(self.packets.keys()):
             if s < self.send_base:
                 del self.packets[s]
 
         self._check_window_invariants()
+
+        # Log cwnd event if any packet was newly ACKed (at most one row per ACK)
+        if newly_acked > 0:
+            event = "ss_exit" if saw_ss_exit else "ack"
+            self._log_cwnd(event=event)
 
     def _check_timeouts(self) -> None:
         """Retransmit every IN_FLIGHT packet whose per-packet deadline has expired."""
@@ -519,16 +578,20 @@ class SelectiveRepeatSender:
                         f" ({self.max_retries})"
                     )
 
-                # Loss-epoch gate: at most one backoff per epoch.
+                # Loss-epoch gate: at most one backoff and one cwnd reduction per epoch.
                 # An epoch ends when send_base passes highest seq sent at timeout.
                 if self.loss_epoch_end is None or self.send_base > self.loss_epoch_end:
                     self.loss_epoch_end = self.next_seq_num - 1
                     self.loss_epoch_retry = p.retry_count
                     self.rto_estimator.on_timeout()
+                    self.cc.on_timeout()
+                    self._log_cwnd(event="timeout")
                 elif p.retry_count > self.loss_epoch_retry:
                     self.loss_epoch_end = self.next_seq_num - 1
                     self.loss_epoch_retry = p.retry_count
                     self.rto_estimator.on_timeout()
+                    self.cc.on_timeout()
+                    self._log_cwnd(event="timeout")
 
                 logger.debug(
                     "[SR] Retransmitting seq=%d (attempt %d/%d)",
@@ -599,6 +662,12 @@ class SelectiveRepeatSender:
             self._rtt_csv_file.write("t,sample_rtt,srtt,rttvar,rto,backoff\n")
             self._rtt_csv_file.flush()
 
+            self._cwnd_csv_file = open(self.run_dir / "cwnd.csv", "w", encoding="utf-8")
+            self._cwnd_csv_file.write(
+                "t,cwnd,ssthresh,rwnd,effective_window,in_flight,send_base,event\n"
+            )
+            self._cwnd_csv_file.flush()
+
         try:
             # -- SR event loop: run until send_base catches up to total_chunks -
             while self.send_base < total_chunks:
@@ -618,17 +687,29 @@ class SelectiveRepeatSender:
                     elif now >= self.persist_deadline:
                         self._send_probe()
 
-                # Phase 1 — Fill the window: seq < send_base + W (W = min(rwnd, max_window))
-                while (
-                    self.next_seq_num < self.send_base + self.effective_window
-                    and chunk_idx < total_chunks
-                ):
-                    payload = chunks[chunk_idx]
-                    p = InFlightPacket(seq=self.next_seq_num, payload=payload)
-                    self.packets[self.next_seq_num] = p
-                    self._send_packet(p, initial=True)
-                    self.next_seq_num += 1
-                    chunk_idx += 1
+                # Phase 1 — Fill the window: seq < send_base + W (W = min(rwnd, floor(cwnd), max_window))
+                while chunk_idx < total_chunks:
+                    rwnd_limit = max(0, self.right_edge - self.send_base)
+                    cwnd_limit = self.cc.usable_window
+                    max_limit = self.window_size
+                    w = min(rwnd_limit, cwnd_limit, max_limit)
+
+                    if self.next_seq_num < self.send_base + w:
+                        if rwnd_limit < cwnd_limit and rwnd_limit < max_limit:
+                            self.limited_by_rwnd += 1
+                        elif cwnd_limit < max_limit and cwnd_limit <= rwnd_limit:
+                            self.limited_by_cwnd += 1
+                        else:
+                            self.limited_by_max += 1
+
+                        payload = chunks[chunk_idx]
+                        p = InFlightPacket(seq=self.next_seq_num, payload=payload)
+                        self.packets[self.next_seq_num] = p
+                        self._send_packet(p, initial=True)
+                        self.next_seq_num += 1
+                        chunk_idx += 1
+                    else:
+                        break
 
                 # Phase 2 — Check per-packet RTO deadlines
                 self._check_timeouts()
@@ -677,4 +758,12 @@ class SelectiveRepeatSender:
                 except Exception:
                     pass
                 self._rtt_csv_file = None
+
+            if self._cwnd_csv_file is not None:
+                try:
+                    self._cwnd_csv_file.flush()
+                    self._cwnd_csv_file.close()
+                except Exception:
+                    pass
+                self._cwnd_csv_file = None
 

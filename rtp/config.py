@@ -48,6 +48,7 @@ IDLE_TIMEOUT: float = 30.0           # Abort after 30 s without valid packets
 
 # Flow control
 PERSIST_TIMER_CAP: float = 2.0       # Zero-window probe persist timer cap (s)
+PROBE_ECHO_SEQ: int = 0xFFFFFFFF     # Echo sequence number for probe replies and window refreshes
 
 # Ports
 DEFAULT_RTP_PORT: int = 9000

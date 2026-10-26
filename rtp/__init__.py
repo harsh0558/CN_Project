@@ -27,6 +27,7 @@ from rtp.packet import (
     PacketReservedNonZeroError,
     PacketTruncatedError,
 )
+from rtp.cwnd import CongestionControl
 from rtp.rto import RtoEstimator
 from rtp.transport import (
     TransportClosedError,
@@ -62,5 +63,6 @@ __all__ = [
     "RtpClient",
     "RtpServer",
     "RtoEstimator",
+    "CongestionControl",
 ]
 

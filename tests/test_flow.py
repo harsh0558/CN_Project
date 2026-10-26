@@ -20,7 +20,7 @@ import pytest
 
 from app.file_receiver import FileReceiver
 from app.file_sender import FileSender
-from rtp.config import FLAG_ACK, FLAG_DATA
+from rtp.config import FLAG_ACK, FLAG_DATA, PROBE_ECHO_SEQ
 from rtp.connection import RtpClient
 from rtp.packet import Packet
 from tools.impair_proxy import DirectionConfig, ImpairmentProxy
@@ -412,3 +412,93 @@ def test_probes_consume_no_seq_and_maintain_counter_invariant(tmp_path: Path):
     dest_file = recv_dir / "flow_probe_src.bin"
     assert dest_file.exists()
     assert _compute_sha256(dest_file.read_bytes()) == expected_digest
+
+
+# ---------------------------------------------------------------------------
+# Test 6: Probe-reply race: data with seq == probe.seq sent before delayed
+# probe reply arrives is dropped; sender must retransmit it and complete.
+# ---------------------------------------------------------------------------
+
+def test_probe_reply_race_does_not_falsely_ack_dropped_data(tmp_path: Path):
+    """Data with seq equal to the probe's seq goes out before proxy-delayed probe
+    reply arrives and is dropped; sender must retransmit it and transfer must complete."""
+    size = 6 * 1024
+    content = bytes([(i * 31) % 256 for i in range(size)])
+    expected_digest = _compute_sha256(content)
+
+    src_file = tmp_path / "probe_race_src.bin"
+    src_file.write_bytes(content)
+
+    recv_dir = tmp_path / "probe_race_recv"
+    recv_dir.mkdir(parents=True, exist_ok=True)
+
+    server_port = _find_free_port()
+    proxy_port = _find_free_port()
+
+    class ProbeRaceProxy(ImpairmentProxy):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.probe_seq = None
+            self.probe_seen = threading.Event()
+
+        def _process_packet(self, direction: str, data: bytes, out_sock, dest_addr):
+            pkt = self._parse_packet_safe(data)
+            is_probe = direction == "c2s" and pkt and pkt.flags == FLAG_DATA and len(pkt.payload) == 0
+            super()._process_packet(direction, data, out_sock, dest_addr)
+            if is_probe:
+                self.probe_seq = pkt.seq
+                self.probe_seen.set()
+                # Drop the upcoming real data packet with this exact sequence number
+                self.drop_next(direction="c2s", count=1, flags=FLAG_DATA, seq=pkt.seq)
+
+    proxy = ProbeRaceProxy(
+        listen_addr=("127.0.0.1", proxy_port),
+        target_addr=("127.0.0.1", server_port),
+        seed=42,
+    )
+    # Delay probe reply ACKs by 300 ms on s2c
+    proxy.reorder_next(direction="s2c", count=1, delay_ms=300.0, flags=FLAG_ACK, seq=PROBE_ECHO_SEQ)
+    proxy.start()
+
+    receiver = FileReceiver(
+        bind_addr=("127.0.0.1", server_port),
+        output_dir=recv_dir,
+        timeout=15.0,
+        mode="sr",
+        capacity=2,
+        app_read_rate=4.0,  # 0.25s interval allows probe to fire before window opens
+    )
+
+    results: list[tuple[str, str | None, int]] = []
+
+    def recv_worker():
+        results.append(receiver.run_once())
+
+    th = threading.Thread(target=recv_worker, daemon=True)
+    th.start()
+    time.sleep(0.05)
+
+    sender = FileSender(
+        server_addr=("127.0.0.1", proxy_port),
+        timeout=15.0,
+        rto=0.08,
+        mode="sr",
+        window_size=16,
+    )
+
+    outcome, code = sender.send_file(src_file)
+    th.join(timeout=15.0)
+    proxy.stop()
+
+    assert outcome == "success"
+    assert code == 0
+    assert proxy.probe_seen.is_set(), "Probe was not sent or not seen by proxy"
+
+    sr_sender = sender._last_sender
+    assert sr_sender is not None
+    assert sr_sender.retx_total >= 1, "Expected dropped packet to be retransmitted"
+
+    dest_file = recv_dir / "probe_race_src.bin"
+    assert dest_file.exists()
+    assert _compute_sha256(dest_file.read_bytes()) == expected_digest
+

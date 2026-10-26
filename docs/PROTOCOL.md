@@ -234,8 +234,9 @@ During project initialization, four specific architectural items were clarified 
    - Acknowledgment packets use `ACK` (`0x02`), `SYN|ACK` (`0x03`), or `FIN|ACK` (`0x06`).
 3. **Zero-Window Probe Mechanics**:
    - The probe packet carries flags `DATA` (`0x08`), `length = 0`, and `seq = send_next` (the next never-sent sequence number).
-   - The receiver identifies a probe by `length == 0` on a packet with `flags == DATA`, regardless of `seq`. The receiver must not buffer it, deliver it, advance `rcv_base`, or treat it as duplicate data. It immediately replies with an `ACK` carrying current `ack = rcv_base` and `rwnd`.
-   - The sender marks a packet as `ACKED` from an ACK's echoed `seq` field **only** if that sequence number is currently `IN_FLIGHT`. Echoes for `UNSENT` or already `ACKED` packets are ignored, and zero-window probes never generate RTT samples.
+   - The receiver identifies a probe by `length == 0` on a packet with `flags == DATA`, regardless of `seq`. The receiver must not buffer it, deliver it, advance `rcv_base`, or treat it as duplicate data. It immediately replies with an `ACK` carrying current `ack = rcv_base`, `rwnd = current`, and `seq = PROBE_ECHO_SEQ` (`0xFFFFFFFF`).
+   - Also, when the receiver drops `DATA` beyond its window (`seq >= rcv_base + rwnd`), it sends a window-refresh `ACK` carrying current `ack = rcv_base`, `rwnd = current`, and `seq = PROBE_ECHO_SEQ`.
+   - The sender's `_process_ack` takes window information (`right_edge`, persist timer) from ACKs where `seq == PROBE_ECHO_SEQ`, but never marks any packet `ACKED` and never samples RTT from them. This prevents a probe-reply race where real data sent with `seq` equal to the probe's `seq` into a newly opened window is dropped and would otherwise be falsely marked `ACKED` by a delayed probe reply.
 4. **SACK Bitmap Coverage vs. Window Size**:
    - The 32-bit `sack` bitmap covers sequence numbers `[ack + 1, ack + 32]`.
    - Packets arriving beyond `ack + 32` up to `max_window` (64) remain buffered in the receiver's window but are not reflected in the bitmap until `ack` advances. Correctness is fully preserved because per-packet ACKs and timeouts provide independent delivery guarantees.
