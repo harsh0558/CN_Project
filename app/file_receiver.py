@@ -11,12 +11,14 @@ import argparse
 import hashlib
 import logging
 import os
+import random
 import sys
 from pathlib import Path
 
 from app.framing import StreamHeader, StreamHeaderParser
 from rtp.config import DEFAULT_RECEIVER_CAPACITY, STATUS_MISMATCH, STATUS_OK
 from rtp.connection import ConnectionAbortError, ConnectionTimeoutError, RtpServer
+from rtp.metrics import ReceiverSummary, write_summary_json
 from rtp.receiver import SelectiveRepeatReceiver, StopAndWaitReceiver
 
 logger = logging.getLogger("app.file_receiver")
@@ -50,6 +52,20 @@ def sanitize_filename(filename: str, max_length: int = MAX_FILENAME_LENGTH) -> s
     return base
 
 
+def _counter(obj, names):
+    """First int attribute found on obj among names, else 0."""
+    for n in names:
+        v = getattr(obj, n, None)
+        if isinstance(v, int):
+            return v
+    return 0
+
+
+# Attribute names looked up on the transport object (adjust to rtp/transport.py if needed)
+_INVALID_NAMES = ("invalid_packets", "invalid_packet_count", "malformed_count", "decode_errors")
+_CRC_NAMES = ("crc_errors", "crc_error_count", "crc_failures")
+
+
 class FileReceiver:
     """Manages the server side of an RTP file transfer."""
 
@@ -64,7 +80,11 @@ class FileReceiver:
         capacity: int = DEFAULT_RECEIVER_CAPACITY,
         app_read_rate: float = 0.0,
         run_dir: str | Path | None = None,
+        seed: int | None = None,
     ) -> None:
+        self.seed = seed
+        if seed is not None:
+            random.seed(seed)
         self.bind_addr = bind_addr
         self.output_dir = Path(output_dir).resolve()
         self.timeout = timeout
@@ -77,6 +97,31 @@ class FileReceiver:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.server: RtpServer | None = None
         self._last_receiver: StopAndWaitReceiver | SelectiveRepeatReceiver | None = None
+
+    def _write_summary(self, outcome: str, receiver) -> None:
+        if self.run_dir is None:
+            return
+        close = getattr(receiver, "close", None)
+        if callable(close):
+            close()
+        transport = getattr(getattr(receiver, "conn", None), "transport", None)
+        d = ReceiverSummary(
+            dup_received=getattr(receiver, "dup_received", 0),
+            ooo_received=getattr(receiver, "ooo_received", 0),
+            invalid_packets=_counter(transport, _INVALID_NAMES),
+            crc_errors=_counter(transport, _CRC_NAMES),
+            max_occupancy=getattr(receiver, "max_occupancy", 0),
+            sha256_ok=(outcome == "success"),
+            status=outcome,
+        ).to_dict()
+        d.update(
+            mode=self.mode,
+            capacity=self.capacity,
+            app_read_rate=self.app_read_rate,
+            seed=self.seed,
+            dropped_beyond_window=getattr(receiver, "dropped_beyond_window", 0),
+        )
+        write_summary_json(self.run_dir / "receiver_summary.json", d)
 
     def run_once(self) -> tuple[str, str | None, int]:
         """Accept one file transfer and process it.
@@ -96,11 +141,13 @@ class FileReceiver:
         except (ConnectionTimeoutError, TimeoutError):
             print("timeout")
             self.server.close()
+            self._write_summary("timeout", None)
             return "timeout", None, STATUS_MISMATCH
         except Exception as exc:
             logger.error("Error accepting connection: %s", exc)
             print("incomplete")
             self.server.close()
+            self._write_summary("incomplete", None)
             return "incomplete", None, STATUS_MISMATCH
 
         if self.mode == "saw":
@@ -209,6 +256,7 @@ class FileReceiver:
                 logger.debug("Error closing connection: %s", exc)
             self.server.close()
 
+        self._write_summary(outcome, receiver)
         resolved_path = str(final_file_path) if outcome == "success" else None
         return outcome, resolved_path, teardown_status
 
@@ -248,6 +296,7 @@ def main() -> None:
         default=None,
         help="Directory to save run traces including rcvbuf.csv",
     )
+    parser.add_argument("--seed", type=int, default=None, help="Seed for Python random")
 
     args = parser.parse_args()
     receiver = FileReceiver(
@@ -258,6 +307,7 @@ def main() -> None:
         capacity=args.window,
         app_read_rate=args.app_read_rate,
         run_dir=args.run_dir,
+        seed=args.seed,
     )
     outcome, _, _ = receiver.run_once()
 

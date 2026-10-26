@@ -12,7 +12,9 @@ import argparse
 import hashlib
 import logging
 import os
+import random
 import sys
+import time
 from pathlib import Path
 
 from app.framing import encode_stream_header
@@ -23,6 +25,7 @@ from rtp.connection import (
     PeerUnreachable,
     RtpClient,
 )
+from rtp.metrics import SenderSummary, compute_goodput_mbps, write_summary_json
 from rtp.sender import SelectiveRepeatSender, StopAndWaitSender
 
 logger = logging.getLogger("app.file_sender")
@@ -38,9 +41,17 @@ class FileSender:
         rto: float | None = None,
         max_retries: int = 10,
         mode: str = "sr",
-        window_size: int = 16,
+        window_size: int = 64,
         run_dir: str | Path | None = None,
+        seed: int | None = None,
     ) -> None:
+        self.seed = seed
+        if seed is not None:
+            random.seed(seed)
+        self._t_start: float | None = None
+        self._t_end: float | None = None
+        self._file_bytes: int = 0
+        self._exit_reason: str = ""
         self.server_addr = server_addr
         self.timeout = timeout
         self.rto = rto
@@ -51,6 +62,64 @@ class FileSender:
         self._last_sender: StopAndWaitSender | SelectiveRepeatSender | None = None
 
     def send_file(
+        self,
+        filepath: str | Path,
+        override_filename: str | None = None,
+        corrupt_hash: bool = False,
+    ) -> tuple[str, int]:
+        """Transmit a file; writes sender_summary.json when run_dir is set."""
+        self._t_start = None
+        self._t_end = None
+        self._file_bytes = 0
+        self._exit_reason = ""
+        outcome, code = self._send_file_impl(filepath, override_filename, corrupt_hash)
+        if self._t_end is None:
+            self._t_end = time.monotonic()
+        if self.run_dir is not None:
+            self._write_summary(outcome)
+        return outcome, code
+
+    def _write_summary(self, outcome: str) -> None:
+        s = self._last_sender
+        c = s.get_counters() if s is not None else {}
+        t_start = self._t_start if self._t_start is not None else self._t_end
+        duration = max(0.0, self._t_end - t_start)
+        goodput = compute_goodput_mbps(self._file_bytes, duration) if outcome == "success" else 0.0
+        est = getattr(s, "rto_estimator", None)
+        cc = getattr(s, "cc", None)
+        d = SenderSummary(
+            file_bytes=self._file_bytes,
+            t_start=t_start,
+            t_end=self._t_end,
+            duration_s=duration,
+            goodput_mbps=goodput,
+            data_sent_total=c.get("data_sent_total", 0),
+            unique_data_packets=c.get("unique_data_packets", 0),
+            retx_total=c.get("retx_total", 0),
+            retx_timeout=c.get("retx_timeout", 0),
+            retx_other=c.get("retx_other", 0),
+            acks_received=c.get("acks_received", 0),
+            dup_acks=c.get("dup_acks", 0),
+            final_srtt=getattr(est, "srtt", None),
+            final_rto=getattr(s, "current_rto", None),
+            status=outcome,
+            exit_reason=self._exit_reason or outcome,
+        ).to_dict()
+        d.update(
+            mode=self.mode,
+            window=self.window_size,
+            seed=self.seed,
+            max_in_flight=c.get("max_in_flight", 0),
+            probes_sent=getattr(s, "probes_sent", 0),
+            limited_by_rwnd=getattr(s, "limited_by_rwnd", 0),
+            limited_by_cwnd=getattr(s, "limited_by_cwnd", 0),
+            limited_by_max=getattr(s, "limited_by_max", 0),
+            final_cwnd=getattr(cc, "cwnd", None),
+            final_ssthresh=getattr(cc, "ssthresh", None),
+        )
+        write_summary_json(Path(self.run_dir) / "sender_summary.json", d)
+
+    def _send_file_impl(
         self,
         filepath: str | Path,
         override_filename: str | None = None,
@@ -70,6 +139,7 @@ class FileSender:
 
         filename = override_filename if override_filename is not None else path.name
         file_size = path.stat().st_size
+        self._file_bytes = file_size
 
         # Compute SHA-256 digest
         hasher = hashlib.sha256()
@@ -86,12 +156,15 @@ class FileSender:
         header_bytes = encode_stream_header(filename, file_size, digest)
 
         client = RtpClient(initial_rto=self.rto if self.rto is not None else 1.0)
+        self._t_start = time.monotonic()  # just before connect/SYN
         try:
             client.connect(self.server_addr, timeout=self.timeout)
         except (PeerUnreachable, ConnectionTimeoutError):
+            self._exit_reason = "connect timed out / peer unreachable"
             print("timeout")
             return "timeout", 2
         except Exception as exc:
+            self._exit_reason = f"connect failed: {exc}"
             logger.error("Connect failed: %s", exc)
             print("incomplete")
             return "incomplete", 3
@@ -129,15 +202,18 @@ class FileSender:
 
             # Graceful teardown: receive status byte from receiver
             status = client.close(timeout=self.timeout)
+            self._t_end = time.monotonic()  # final status received
 
             if status == STATUS_OK:
                 print("success")
                 return "success", 0
             else:
+                self._exit_reason = "receiver reported hash/size mismatch"
                 print("failed")
                 return "failed", 1
 
         except (PeerUnreachable, ConnectionTimeoutError):
+            self._exit_reason = "peer unreachable / timed out"
             print("timeout")
             try:
                 client.transport.close()
@@ -146,6 +222,7 @@ class FileSender:
             return "timeout", 2
 
         except ConnectionAbortError as exc:
+            self._exit_reason = str(exc)
             logger.warning("Transfer aborted on timeout: %s", exc)
             print("timeout")
             try:
@@ -155,6 +232,7 @@ class FileSender:
             return "timeout", 2
 
         except Exception as exc:
+            self._exit_reason = f"transfer error: {exc}"
             logger.error("Transfer error: %s", exc)
             print("incomplete")
             try:
@@ -191,9 +269,10 @@ def main() -> None:
     parser.add_argument(
         "--window",
         type=int,
-        default=16,
-        help="Selective Repeat window size in packets (default: 16)",
+        default=64,
+        help="Selective Repeat window size in packets (default: 64)",
     )
+    parser.add_argument("--seed", type=int, default=None, help="Seed for Python random")
     parser.add_argument(
         "--corrupt-hash",
         action="store_true",
@@ -208,6 +287,7 @@ def main() -> None:
         mode=args.mode,
         window_size=args.window,
         run_dir=args.run_dir,
+        seed=args.seed,
     )
     outcome, code = sender.send_file(args.file, corrupt_hash=args.corrupt_hash)
     sys.exit(code)
