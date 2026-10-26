@@ -21,8 +21,9 @@ import pytest
 from app.file_receiver import FileReceiver
 from app.file_sender import FileSender
 from rtp.config import FLAG_ACK, FLAG_DATA, PROBE_ECHO_SEQ
-from rtp.connection import RtpClient
+from rtp.connection import RtpClient, RtpState
 from rtp.packet import Packet
+from rtp.sender import InFlightPacket, SelectiveRepeatSender
 from tools.impair_proxy import DirectionConfig, ImpairmentProxy
 
 
@@ -501,4 +502,113 @@ def test_probe_reply_race_does_not_falsely_ack_dropped_data(tmp_path: Path):
     dest_file = recv_dir / "probe_race_src.bin"
     assert dest_file.exists()
     assert _compute_sha256(dest_file.read_bytes()) == expected_digest
+
+
+# ---------------------------------------------------------------------------
+# Test 7: Stale ACK with larger old rwnd does not inflate window beyond right edge
+# ---------------------------------------------------------------------------
+
+def test_stale_ack_does_not_inflate_window_beyond_right_edge():
+    """Deliver a stale ACK (ack < send_base, larger old rwnd) after a newer ACK;
+    the sender must not send any packet with seq >= the true right edge."""
+    class DummyStats:
+        data_sent = 0
+        ack_received = 0
+        unexpected_packets_count = 0
+        foreign_conn_id_count = 0
+
+    class DummyTransport:
+        def __init__(self):
+            self.sent = []
+
+        def send_packet(self, pkt, addr):
+            self.sent.append(pkt)
+
+        def receive(self, timeout=None):
+            return None
+
+    conn_id = 0x12345678
+    peer_addr = ("127.0.0.1", 10000)
+
+    class DummyConn:
+        conn_id = 0x12345678
+        peer_addr = ("127.0.0.1", 10000)
+        peer_rwnd = 4
+        state = RtpState.ESTABLISHED
+        stats = DummyStats()
+        def __init__(self):
+            self.transport = DummyTransport()
+
+    dummy_conn = DummyConn()
+    sender = SelectiveRepeatSender(dummy_conn, window_size=64)
+    # Initial peer_rwnd = 4, so initial right_edge = 4
+    assert sender.right_edge == 4
+
+    chunks = [b"chunk_%d" % i for i in range(10)]
+    sender.cc.cwnd = 32.0  # High cwnd so flow control is the only limit
+
+    # Step 1: Initial window fill sends seq 0..3 (right_edge = 4)
+    for chunk_idx in range(4):
+        p = InFlightPacket(seq=sender.next_seq_num, payload=chunks[chunk_idx])
+        sender.packets[sender.next_seq_num] = p
+        sender._send_packet(p, initial=True)
+        sender.next_seq_num += 1
+
+    assert sender.next_seq_num == 4
+    assert len(sender.packets) == 4
+
+    # Step 2: Newer ACK arrives: ack=2, rwnd=2 -> true right_edge = 2 + 2 = 4
+    ack_newer = Packet(
+        conn_id=conn_id,
+        seq=1,
+        ack=2,
+        sack=0,
+        rwnd=2,
+        flags=FLAG_ACK,
+    )
+    sender._process_ack(ack_newer)
+    assert sender.send_base == 2
+    assert sender.right_edge == 4
+    true_right_edge = sender.right_edge
+
+    # Step 3: Stale ACK arrives: ack=0 (< send_base 2), rwnd=4 (> newer rwnd 2)
+    ack_stale = Packet(
+        conn_id=conn_id,
+        seq=0,
+        ack=0,
+        sack=0,
+        rwnd=4,
+        flags=FLAG_ACK,
+    )
+    sender._process_ack(ack_stale)
+
+    # In old code without right-edge tracking: sender.rwnd was set to 4,
+    # leading to send_base + rwnd = 2 + 4 = 6 (allowing seq 4 and 5).
+    # With right_edge tracking: right_edge = max(4, 0 + 4) = 4.
+    assert sender.right_edge == true_right_edge
+    assert sender.rwnd == true_right_edge - sender.send_base == 2
+
+    # Step 4: Attempt to fill window again
+    chunk_idx = sender.next_seq_num
+    while chunk_idx < len(chunks):
+        rwnd_limit = max(0, sender.right_edge - sender.send_base)
+        cwnd_limit = sender.cc.usable_window
+        max_limit = sender.window_size
+        w = min(rwnd_limit, cwnd_limit, max_limit)
+        if sender.next_seq_num < sender.send_base + w:
+            p = InFlightPacket(seq=sender.next_seq_num, payload=chunks[chunk_idx])
+            sender.packets[sender.next_seq_num] = p
+            sender._send_packet(p, initial=True)
+            sender.next_seq_num += 1
+            chunk_idx += 1
+        else:
+            break
+
+    # The sender must NOT send any packet with seq >= the true right edge (4)
+    sent_seqs = [pkt.seq for pkt in dummy_conn.transport.sent]
+    assert max(sent_seqs) < true_right_edge, f"Sent seqs {sent_seqs} >= {true_right_edge}"
+    assert all(seq < true_right_edge for seq in sent_seqs)
+    assert len(sender.window_violations) == 0
+
+
 

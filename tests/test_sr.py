@@ -751,11 +751,11 @@ def test_zero_length_data_probe_not_buffered_or_delivered_and_gets_ack():
     assert receiver.dup_received == 0
     assert receiver.ooo_received == 0
 
-    # Must send immediate ACK echoing probe seq (5) and advertising rcv_base (0)
+    # Must send immediate ACK echoing PROBE_ECHO_SEQ and advertising rcv_base (0)
     assert len(dummy_conn.transport.sent) == 1
     ack = dummy_conn.transport.sent[0]
     assert ack.flags == FLAG_ACK
-    assert ack.seq == 5
+    assert ack.seq == PROBE_ECHO_SEQ
     assert ack.ack == 0
     assert ack.rwnd == 64
 
