@@ -36,6 +36,7 @@ from rtp.connection import (
     RtpState,
 )
 from rtp.cwnd import CongestionControl
+from rtp.metrics import CwndTraceWriter, RttTraceWriter
 from rtp.packet import Packet
 from rtp.rto import RtoEstimator
 
@@ -98,12 +99,15 @@ class StopAndWaitSender:
         self.data_sent_total: int = 0
         self.unique_data_packets: int = 0
         self.retx_timeout: int = 0
+        self.retx_other: int = 0
+        self.acks_received: int = 0
+        self.dup_acks: int = 0
         self.bytes_sent_total: int = 0
 
     @property
     def retx_total(self) -> int:
-        """Alias for retx_timeout per Phase 4 counter specification."""
-        return self.retx_timeout
+        """Total retransmissions (timeout + other)."""
+        return self.retx_timeout + self.retx_other
 
     def get_counters(self) -> dict[str, int]:
         """Return sender telemetry counters as a dictionary."""
@@ -111,7 +115,10 @@ class StopAndWaitSender:
             "data_sent_total": self.data_sent_total,
             "unique_data_packets": self.unique_data_packets,
             "retx_timeout": self.retx_timeout,
+            "retx_other": self.retx_other,
             "retx_total": self.retx_total,
+            "acks_received": self.acks_received,
+            "dup_acks": self.dup_acks,
             "bytes_sent_total": self.bytes_sent_total,
         }
 
@@ -182,6 +189,7 @@ class StopAndWaitSender:
 
             if recv_pkt.flags == FLAG_ACK:
                 self.conn.stats.ack_received += 1
+                self.acks_received += 1
                 # Cumulative ACK must advance past the current seq
                 if recv_pkt.ack > seq:
                     self.seq_next = recv_pkt.ack
@@ -190,6 +198,7 @@ class StopAndWaitSender:
                     self.bytes_sent_total += len(payload)
                     return
                 # Stale / duplicate ACK — keep waiting
+                self.dup_acks += 1
             else:
                 self.conn.stats.unexpected_packets_count += 1
 
@@ -269,6 +278,7 @@ class SelectiveRepeatSender:
 
         # Trace logging
         self._start_time: float = 0.0
+        self._rtt_writer: RttTraceWriter | None = None
         self._rtt_csv_file = None
 
         # Flow control: initialize right_edge from peer (e.g. from SYN|ACK rwnd, ack=0)
@@ -289,6 +299,7 @@ class SelectiveRepeatSender:
         self.limited_by_rwnd: int = 0
         self.limited_by_cwnd: int = 0
         self.limited_by_max: int = 0
+        self._cwnd_writer: CwndTraceWriter | None = None
         self._cwnd_csv_file = None
 
         # Telemetry counters
@@ -296,6 +307,9 @@ class SelectiveRepeatSender:
         self.data_sent_total: int = 0
         self.unique_data_packets: int = 0
         self.retx_timeout: int = 0
+        self.retx_other: int = 0
+        self.acks_received: int = 0
+        self.dup_acks: int = 0
         self.bytes_sent_total: int = 0
         self.max_in_flight: int = 0
 
@@ -329,8 +343,8 @@ class SelectiveRepeatSender:
 
     @property
     def retx_total(self) -> int:
-        """Alias for retx_timeout per Phase 4 counter specification."""
-        return self.retx_timeout
+        """Total retransmissions (timeout + other)."""
+        return self.retx_timeout + self.retx_other
 
     def get_counters(self) -> dict[str, int]:
         """Return sender telemetry counters as a dictionary."""
@@ -338,7 +352,10 @@ class SelectiveRepeatSender:
             "data_sent_total": self.data_sent_total,
             "unique_data_packets": self.unique_data_packets,
             "retx_timeout": self.retx_timeout,
+            "retx_other": self.retx_other,
             "retx_total": self.retx_total,
+            "acks_received": self.acks_received,
+            "dup_acks": self.dup_acks,
             "bytes_sent_total": self.bytes_sent_total,
             "max_in_flight": self.max_in_flight,
         }
@@ -365,12 +382,23 @@ class SelectiveRepeatSender:
 
     def _log_cwnd(self, event: str) -> None:
         """Log cwnd transition to cwnd.csv if run_dir was specified."""
-        if self._cwnd_csv_file is not None:
-            now = time.monotonic()
-            t = now - self._start_time
-            in_flight = sum(
-                1 for p in self.packets.values() if p.state == PacketState.IN_FLIGHT
+        now = time.monotonic()
+        t = now - self._start_time
+        in_flight = sum(
+            1 for p in self.packets.values() if p.state == PacketState.IN_FLIGHT
+        )
+        if self._cwnd_writer is not None:
+            self._cwnd_writer.log(
+                t=t,
+                cwnd=self.cc.cwnd,
+                ssthresh=self.cc.ssthresh,
+                rwnd=self.rwnd,
+                effective_window=self.effective_window,
+                in_flight=in_flight,
+                send_base=self.send_base,
+                event=event,
             )
+        elif self._cwnd_csv_file is not None:
             self._cwnd_csv_file.write(
                 f"{t:.6f},{self.cc.cwnd:.4f},{self.cc.ssthresh},{self.rwnd},"
                 f"{self.effective_window},{in_flight},{self.send_base},{event}\n"
@@ -487,17 +515,27 @@ class SelectiveRepeatSender:
                 sample_rtt = now - pkt_slot.send_time
                 self.rto_estimator.on_sample(sample_rtt)
                 if (
-                    self._rtt_csv_file is not None
+                    (self._rtt_writer is not None or self._rtt_csv_file is not None)
                     and self.rto_estimator.srtt is not None
                     and self.rto_estimator.rttvar is not None
                 ):
                     t = now - self._start_time
-                    self._rtt_csv_file.write(
-                        f"{t:.6f},{sample_rtt:.6f},{self.rto_estimator.srtt:.6f},"
-                        f"{self.rto_estimator.rttvar:.6f},{self.rto_estimator.current_rto:.6f},"
-                        f"{self.rto_estimator.backoff}\n"
-                    )
-                    self._rtt_csv_file.flush()
+                    if self._rtt_writer is not None:
+                        self._rtt_writer.log(
+                            t=t,
+                            sample_rtt=sample_rtt,
+                            srtt=self.rto_estimator.srtt,
+                            rttvar=self.rto_estimator.rttvar,
+                            rto=self.rto_estimator.current_rto,
+                            backoff=self.rto_estimator.backoff,
+                        )
+                    elif self._rtt_csv_file is not None:
+                        self._rtt_csv_file.write(
+                            f"{t:.6f},{sample_rtt:.6f},{self.rto_estimator.srtt:.6f},"
+                            f"{self.rto_estimator.rttvar:.6f},{self.rto_estimator.current_rto:.6f},"
+                            f"{self.rto_estimator.backoff}\n"
+                        )
+                        self._rtt_csv_file.flush()
 
             pkt_slot.state = PacketState.ACKED
             pkt_slot.deadline = 0.0
@@ -564,6 +602,8 @@ class SelectiveRepeatSender:
         if newly_acked > 0:
             event = "ss_exit" if saw_ss_exit else "ack"
             self._log_cwnd(event=event)
+        else:
+            self.dup_acks += 1
 
     def _check_timeouts(self) -> None:
         """Retransmit every IN_FLIGHT packet whose per-packet deadline has expired."""
@@ -657,16 +697,11 @@ class SelectiveRepeatSender:
 
         self._start_time = time.monotonic()
         if self.run_dir is not None:
-            self.run_dir.mkdir(parents=True, exist_ok=True)
-            self._rtt_csv_file = open(self.run_dir / "rtt.csv", "w", encoding="utf-8")
-            self._rtt_csv_file.write("t,sample_rtt,srtt,rttvar,rto,backoff\n")
-            self._rtt_csv_file.flush()
+            self._rtt_writer = RttTraceWriter(self.run_dir / "rtt.csv", start_time=self._start_time)
+            self._rtt_csv_file = self._rtt_writer.file
 
-            self._cwnd_csv_file = open(self.run_dir / "cwnd.csv", "w", encoding="utf-8")
-            self._cwnd_csv_file.write(
-                "t,cwnd,ssthresh,rwnd,effective_window,in_flight,send_base,event\n"
-            )
-            self._cwnd_csv_file.flush()
+            self._cwnd_writer = CwndTraceWriter(self.run_dir / "cwnd.csv", start_time=self._start_time)
+            self._cwnd_csv_file = self._cwnd_writer.file
 
         try:
             # -- SR event loop: run until send_base catches up to total_chunks -
@@ -723,6 +758,7 @@ class SelectiveRepeatSender:
                         last_valid_packet_time = time.monotonic()
                         if recv_pkt.flags == FLAG_ACK:
                             self.conn.stats.ack_received += 1
+                            self.acks_received += 1
                             self._process_ack(recv_pkt)
                         else:
                             self.conn.stats.unexpected_packets_count += 1
@@ -739,6 +775,7 @@ class SelectiveRepeatSender:
                         last_valid_packet_time = time.monotonic()
                         if recv_pkt.flags == FLAG_ACK:
                             self.conn.stats.ack_received += 1
+                            self.acks_received += 1
                             self._process_ack(recv_pkt)
                         else:
                             self.conn.stats.unexpected_packets_count += 1
@@ -751,6 +788,9 @@ class SelectiveRepeatSender:
 
             return sum(len(c) for c in chunks)
         finally:
+            if self._rtt_writer is not None:
+                self._rtt_writer.close()
+                self._rtt_writer = None
             if self._rtt_csv_file is not None:
                 try:
                     self._rtt_csv_file.flush()
@@ -759,6 +799,9 @@ class SelectiveRepeatSender:
                     pass
                 self._rtt_csv_file = None
 
+            if self._cwnd_writer is not None:
+                self._cwnd_writer.close()
+                self._cwnd_writer = None
             if self._cwnd_csv_file is not None:
                 try:
                     self._cwnd_csv_file.flush()

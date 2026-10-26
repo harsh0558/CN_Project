@@ -13,7 +13,7 @@ import socket
 import time
 from typing import Final
 
-from rtp.packet import Packet, PacketError
+from rtp.packet import Packet, PacketCRCError, PacketError
 
 logger = logging.getLogger("rtp.transport")
 
@@ -65,6 +65,8 @@ class UDPTransport:
         self.bytes_sent: int = 0
         self.bytes_received: int = 0
         self.decode_error_count: int = 0
+        self.crc_errors: int = 0
+        self.invalid_packets: int = 0
 
         if bind_addr is not None:
             self.bind(bind_addr)
@@ -176,8 +178,22 @@ class UDPTransport:
                 packet = Packet.decode(data)
                 self.packets_received += 1
                 return packet, addr
+            except PacketCRCError as err:
+                self.decode_error_count += 1
+                self.crc_errors += 1
+                logger.warning(
+                    "Dropped CRC-corrupted datagram (%d bytes) from %s: %s",
+                    len(data),
+                    addr,
+                    err,
+                )
+                if timeout == 0.0:
+                    return None
+                if timeout is not None and (time.monotonic() - start_time) >= timeout:
+                    return None
             except PacketError as err:
                 self.decode_error_count += 1
+                self.invalid_packets += 1
                 logger.warning(
                     "Dropped invalid datagram (%d bytes) from %s: %s",
                     len(data),
@@ -186,7 +202,6 @@ class UDPTransport:
                 )
                 if timeout == 0.0:
                     return None
-                # If timeout specified and remaining time elapsed, exit
                 if timeout is not None and (time.monotonic() - start_time) >= timeout:
                     return None
 
