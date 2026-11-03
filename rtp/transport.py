@@ -71,7 +71,7 @@ class UDPTransport:
         if bind_addr is not None:
             self.bind(bind_addr)
         else:
-            self.bind(("127.0.0.1", 0))
+            self.bind(("0.0.0.0", 0))
 
     def _apply_buffer_sizes(self) -> None:
         if self._sock is None:
