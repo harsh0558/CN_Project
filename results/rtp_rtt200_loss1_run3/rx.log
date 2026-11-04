@@ -1,0 +1,2 @@
+<frozen runpy>:128: RuntimeWarning: 'app.file_receiver' found in sys.modules after import of package 'app', but prior to execution of 'app.file_receiver'; this may result in unpredictable behaviour
+success

@@ -11,12 +11,6 @@ htmlcov/
 # Environment / local outputs
 venv/
 .env
-results/*
-!results/.gitkeep
-!results/README.md
-evidence/*
-!evidence/.gitkeep
-!evidence/README.md
 capture/*.pcap
 *.part
 scratch/

@@ -1,0 +1,20 @@
+{
+  "file_bytes": 20000000,
+  "t_start": 9736.037782663,
+  "t_end": 9954.443330025,
+  "duration_s": 218.40554736200102,
+  "goodput_mbps": 0.7325821250080453,
+  "status": "success",
+  "exit_reason": "success",
+  "protocol": "tcp",
+  "cc": "reno",
+  "retx_total": 132,
+  "final_srtt": 0.202275,
+  "tcp_info": {
+    "snd_mss": 1448,
+    "srtt_ms": 202.275,
+    "snd_ssthresh": 7,
+    "snd_cwnd_segments": 26,
+    "total_retrans": 132
+  }
+}

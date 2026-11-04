@@ -20,6 +20,7 @@ import argparse
 import hashlib
 import json
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -61,6 +62,7 @@ def main() -> int:
     ap.add_argument("--window", type=int, default=64, help="window size in packets (sender and receiver)")
     ap.add_argument("--timeout", type=int, default=1800, help="protocol timeout in seconds")
     ap.add_argument("--evidence", action="store_true", help="also save routing tables + traceroute")
+    ap.add_argument("--capture", action="store_true", help="capture packets on h1 and h2 with tcpdump")
     args = ap.parse_args()
 
     if os.geteuid() != 0:
@@ -75,7 +77,7 @@ def main() -> int:
     if args.reorder > 0:
         tag += f"_reo{args.reorder:g}"
     tag += f"_run{args.run}"
-    run_dir = ROOT / "results" / tag
+    run_dir = ROOT / ("capture" if args.capture else "results") / tag
     if run_dir.exists():
         sys.exit(f"{run_dir} already exists - refusing to overwrite. Delete it or change --run.")
     (run_dir / "received").mkdir(parents=True)
@@ -92,7 +94,7 @@ def main() -> int:
     result = {"tag": tag, "protocol": args.proto, "tcp_cc": args.cc if args.proto == "tcp" else None, "rtt_ms_target": args.rtt, "loss_pct": args.loss,
               "reorder_pct": args.reorder, "run": args.run, "file": args.file,
               "window": args.window, "netem": netem}
-    rx = tx = None
+    rx = tx = dump_h1 = dump_h2 = None
     try:
         h1, h2, r1, r2 = net.get("h1", "h2", "r1", "r2")
 
@@ -108,6 +110,13 @@ def main() -> int:
             (run_dir / "topology_evidence.txt").write_text(
                 "== r1 ip route ==\n" + r1.cmd("ip route") + "\n== r2 ip route ==\n" + r2.cmd("ip route") +
                 "\n== h1 traceroute ==\n" + h1.cmd("traceroute -n 10.0.3.10"))
+
+        # --- start tcpdump capture on h1 and h2 ---
+        if args.capture:
+            flt = "udp port 9000" if args.proto == "rtp" else "tcp port 9000"
+            dump_h1 = h1.popen(["tcpdump", "-i", "h1-eth0", "-U", "-s", "0", "-n", "-w", str(run_dir / "h1.pcap"), flt])
+            dump_h2 = h2.popen(["tcpdump", "-i", "h2-eth0", "-U", "-s", "0", "-n", "-w", str(run_dir / "h2.pcap"), flt])
+            time.sleep(1.0)
 
         # --- start receiver on h2 ---
         rx_log = open(run_dir / "rx.log", "w")
@@ -150,6 +159,26 @@ def main() -> int:
         tx_log.close()
         rx_log.close()
 
+        if args.capture:
+            time.sleep(1.0)
+            for p in (dump_h1, dump_h2):
+                if p is not None and p.poll() is None:
+                    p.send_signal(signal.SIGINT)
+            for p in (dump_h1, dump_h2):
+                if p is not None:
+                    try:
+                        p.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        p.kill()
+                        p.wait()
+            for name in ("h1", "h2"):
+                pcap = run_dir / f"{name}.pcap"
+                pcapng = run_dir / f"{name}.pcapng"
+                if pcap.exists():
+                    res = subprocess.run(["editcap", "-F", "pcapng", str(pcap), str(pcapng)])
+                    if res.returncode == 0 and pcapng.exists():
+                        pcap.unlink()
+
         # --- integrity check ---
         dest = run_dir / "received" / (src.name if args.proto == "rtp" else "received.bin")
         hash_ok = dest.exists() and sha256(dest) == sha256(src)
@@ -169,8 +198,15 @@ def main() -> int:
             "sender_summary": tx_sum,
             "receiver_summary": rx_sum,
         })
+        if args.capture:
+            result.update({
+                "capture": True,
+                "pcapng_h1": "h1.pcapng",
+                "pcapng_h2": "h2.pcapng",
+                "pcapng": ["h1.pcapng", "h2.pcapng"],
+            })
     finally:
-        for p in (tx, rx):
+        for p in (tx, rx, dump_h1, dump_h2):
             if p is not None and p.poll() is None:
                 p.kill()
         net.stop()

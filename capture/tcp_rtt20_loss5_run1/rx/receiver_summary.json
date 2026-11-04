@@ -1,0 +1,7 @@
+{
+  "protocol": "tcp",
+  "bytes_received": 1000000,
+  "hash_ok": true,
+  "status": "success",
+  "exit_reason": "success"
+}

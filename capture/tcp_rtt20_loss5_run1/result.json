@@ -1,0 +1,51 @@
+{
+  "tag": "tcp_rtt20_loss5_run1",
+  "protocol": "tcp",
+  "tcp_cc": "reno",
+  "rtt_ms_target": 20.0,
+  "loss_pct": 5.0,
+  "reorder_pct": 0.0,
+  "run": 1,
+  "file": "test_1mb.bin",
+  "window": 64,
+  "netem": "delay 10ms loss 5%",
+  "status": "success",
+  "sender_return_code": 0,
+  "killed_on_timeout": false,
+  "hash_ok": true,
+  "wall_time_s": 2.885,
+  "sender_summary": {
+    "file_bytes": 1000000,
+    "t_start": 2656.096594389,
+    "t_end": 2658.856051511,
+    "duration_s": 2.7594571219997306,
+    "goodput_mbps": 2.899120967026492,
+    "status": "success",
+    "exit_reason": "success",
+    "protocol": "tcp",
+    "cc": "reno",
+    "retx_total": 35,
+    "final_srtt": 0.021623999999999997,
+    "tcp_info": {
+      "snd_mss": 1448,
+      "srtt_ms": 21.624,
+      "snd_ssthresh": 4,
+      "snd_cwnd_segments": 4,
+      "total_retrans": 35
+    }
+  },
+  "receiver_summary": {
+    "protocol": "tcp",
+    "bytes_received": 1000000,
+    "hash_ok": true,
+    "status": "success",
+    "exit_reason": "success"
+  },
+  "capture": true,
+  "pcapng_h1": "h1.pcapng",
+  "pcapng_h2": "h2.pcapng",
+  "pcapng": [
+    "h1.pcapng",
+    "h2.pcapng"
+  ]
+}

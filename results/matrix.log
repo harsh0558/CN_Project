@@ -1,0 +1,185 @@
+planned runs: 90   already done: 0   to run: 90
+[03:59:53] (1/90) starting rtp_rtt20_loss0_run1
+           [rtp_rtt20_loss0_run1] status=success hash_ok=True wall=8.956s goodput=23.53008938283511 Mbit/s retx=0 srtt=0.020642043900138234   [12s]
+[04:00:05] (2/90) starting tcp_rtt20_loss0_run1
+           [tcp_rtt20_loss0_run1] status=success hash_ok=True wall=0.668s goodput=306.0762304928521 Mbit/s retx=1710 srtt=0.020585   [4s]
+[04:00:09] (3/90) starting rtp_rtt20_loss1_run1
+           [rtp_rtt20_loss1_run1] status=success hash_ok=True wall=77.733s goodput=2.1173218452468605 Mbit/s retx=204 srtt=0.020929633858301176   [81s]
+[04:01:30] (4/90) starting tcp_rtt20_loss1_run1
+           [tcp_rtt20_loss1_run1] status=success hash_ok=True wall=22.94s goodput=7.0148395833016615 Mbit/s retx=137 srtt=0.022219000000000003   [26s]
+[04:01:56] (5/90) starting rtp_rtt20_loss5_run1
+           [rtp_rtt20_loss5_run1] status=success hash_ok=True wall=292.838s goodput=0.5503731941300704 Mbit/s retx=1132 srtt=0.020793269521642094   [296s]
+[04:06:52] (6/90) starting tcp_rtt20_loss5_run1
+planned runs: 90   already done: 5   to run: 85
+[04:07:04] (1/85) starting tcp_rtt20_loss5_run1
+           [tcp_rtt20_loss5_run1] status=success hash_ok=True wall=72.518s goodput=2.2093686695169756 Mbit/s retx=793 srtt=0.021022   [76s]
+[04:08:19] (2/85) starting rtp_rtt20_loss10_run1
+           [rtp_rtt20_loss10_run1] status=success hash_ok=True wall=690.953s goodput=0.2322889985848907 Mbit/s retx=2512 srtt=0.020739141329487832   [694s]
+[04:19:54] (3/85) starting tcp_rtt20_loss10_run1
+           [tcp_rtt20_loss10_run1] status=success hash_ok=True wall=153.88s goodput=1.0404353665141828 Mbit/s retx=1629 srtt=0.02147   [157s]
+[04:22:31] (4/85) starting rtp_rtt100_loss0_run1
+           [rtp_rtt100_loss0_run1] status=success hash_ok=True wall=34.401s goodput=4.962622497387274 Mbit/s retx=0 srtt=0.10070976331480276   [38s]
+[04:23:09] (5/85) starting tcp_rtt100_loss0_run1
+           [tcp_rtt100_loss0_run1] status=success hash_ok=True wall=4.138s goodput=39.67585667218296 Mbit/s retx=1486 srtt=0.100653   [7s]
+[04:23:16] (6/85) starting rtp_rtt100_loss1_run1
+           [rtp_rtt100_loss1_run1] status=success hash_ok=True wall=181.531s goodput=0.8920057740736422 Mbit/s retx=190 srtt=0.10096741258779154   [185s]
+[04:26:21] (7/85) starting tcp_rtt100_loss1_run1
+           [tcp_rtt100_loss1_run1] status=success hash_ok=True wall=99.368s goodput=1.6125516040037717 Mbit/s retx=111 srtt=0.104333   [103s]
+[04:28:04] (8/85) starting rtp_rtt100_loss5_run1
+           [rtp_rtt100_loss5_run1] status=success hash_ok=True wall=564.506s goodput=0.28452010697512625 Mbit/s retx=1238 srtt=0.10088003524370989   [568s]
+[04:37:32] (9/85) starting tcp_rtt100_loss5_run1
+           [tcp_rtt100_loss5_run1] status=success hash_ok=True wall=303.667s goodput=0.5271367851605085 Mbit/s retx=751 srtt=0.10799299999999999   [307s]
+[04:42:39] (10/85) starting rtp_rtt100_loss10_run1
+           [rtp_rtt100_loss10_run1] status=success hash_ok=True wall=1057.076s goodput=0.1516701317860916 Mbit/s retx=2970 srtt=0.10075221654916369   [1061s]
+[05:00:20] (11/85) starting tcp_rtt100_loss10_run1
+           [tcp_rtt100_loss10_run1] status=success hash_ok=True wall=587.673s goodput=0.27231452076142 Mbit/s retx=1648 srtt=0.11034999999999999   [591s]
+[05:10:11] (12/85) starting rtp_rtt200_loss0_run1
+           [rtp_rtt200_loss0_run1] status=success hash_ok=True wall=104.789s goodput=1.5585474543734128 Mbit/s retx=102 srtt=0.20105291470193598   [108s]
+[05:11:59] (13/85) starting tcp_rtt200_loss0_run1
+           [tcp_rtt200_loss0_run1] status=success hash_ok=True wall=5.544s goodput=29.50069665461827 Mbit/s retx=2141 srtt=0.200734   [9s]
+[05:12:08] (14/85) starting rtp_rtt200_loss1_run1
+           [rtp_rtt200_loss1_run1] status=success hash_ok=True wall=366.331s goodput=0.43932364286655096 Mbit/s retx=237 srtt=0.20105525135193633   [370s]
+[05:18:19] (15/85) starting tcp_rtt200_loss1_run1
+           [tcp_rtt200_loss1_run1] status=success hash_ok=True wall=218.547s goodput=0.7325821250080453 Mbit/s retx=132 srtt=0.202275   [222s]
+[05:22:01] (16/85) starting rtp_rtt200_loss5_run1
+           [rtp_rtt200_loss5_run1] status=success hash_ok=True wall=911.688s goodput=0.17591210629158213 Mbit/s retx=1258 srtt=0.2008754915416004   [915s]
+[05:37:16] (17/85) starting tcp_rtt200_loss5_run1
+           [tcp_rtt200_loss5_run1] status=success hash_ok=True wall=617.871s goodput=0.2590110362249133 Mbit/s retx=793 srtt=0.20634899999999998   [622s]
+[05:47:38] (18/85) starting rtp_rtt200_loss10_run1
+           [rtp_rtt200_loss10_run1] status=success hash_ok=True wall=1493.101s goodput=0.10731540233236973 Mbit/s retx=2877 srtt=0.20087530904774234   [1527s]
+[06:13:05] (19/85) starting tcp_rtt200_loss10_run1
+           [tcp_rtt200_loss10_run1] status=success hash_ok=True wall=984.772s goodput=0.1624934420401689 Mbit/s retx=1602 srtt=0.20828200000000002   [988s]
+[06:29:33] (20/85) starting rtp_rtt20_loss0_reo1_run1
+           [rtp_rtt20_loss0_reo1_run1] status=success hash_ok=True wall=8.506s goodput=25.169052491151444 Mbit/s retx=0 srtt=0.021059749733902726   [12s]
+[06:29:45] (21/85) starting tcp_rtt20_loss0_reo1_run1
+           [tcp_rtt20_loss0_reo1_run1] status=success hash_ok=True wall=0.619s goodput=327.8019177258411 Mbit/s retx=3842 srtt=0.019826   [4s]
+[06:29:49] (22/85) starting rtp_rtt100_loss0_reo1_run1
+           [rtp_rtt100_loss0_reo1_run1] status=success hash_ok=True wall=31.437s goodput=5.463957190969279 Mbit/s retx=0 srtt=0.09602666181363516   [35s]
+[06:30:23] (23/85) starting tcp_rtt100_loss0_reo1_run1
+           [tcp_rtt100_loss0_reo1_run1] status=success hash_ok=True wall=2.28s goodput=74.5400577597269 Mbit/s retx=3177 srtt=0.099992   [6s]
+[06:30:29] (24/85) starting rtp_rtt200_loss0_reo1_run1
+           [rtp_rtt200_loss0_reo1_run1] status=success hash_ok=True wall=113.175s goodput=1.441242560641055 Mbit/s retx=278 srtt=0.1851972264004193   [117s]
+[06:32:26] (25/85) starting tcp_rtt200_loss0_reo1_run1
+           [tcp_rtt200_loss0_reo1_run1] status=success hash_ok=True wall=6.91s goodput=23.617243013362724 Mbit/s retx=3928 srtt=0.19949   [10s]
+[06:32:36] (26/85) starting rtp_rtt20_loss0_run2
+           [rtp_rtt20_loss0_run2] status=success hash_ok=True wall=8.966s goodput=23.497184005021733 Mbit/s retx=0 srtt=0.020821234666697715   [12s]
+[06:32:48] (27/85) starting tcp_rtt20_loss0_run2
+           [tcp_rtt20_loss0_run2] status=success hash_ok=True wall=0.721s goodput=274.12026813642615 Mbit/s retx=1531 srtt=0.020515000000000002   [4s]
+[06:32:52] (28/85) starting rtp_rtt20_loss1_run2
+           [rtp_rtt20_loss1_run2] status=success hash_ok=True wall=75.822s goodput=2.1720558431248933 Mbit/s retx=200 srtt=0.020698850975149556   [79s]
+[06:34:11] (29/85) starting tcp_rtt20_loss1_run2
+           [tcp_rtt20_loss1_run2] status=success hash_ok=True wall=24.883s goodput=6.462702611388124 Mbit/s retx=141 srtt=0.021308   [28s]
+[06:34:39] (30/85) starting rtp_rtt20_loss5_run2
+           [rtp_rtt20_loss5_run2] status=success hash_ok=True wall=314.354s goodput=0.5124566271555194 Mbit/s retx=1152 srtt=0.021339318915310167   [317s]
+[06:39:56] (31/85) starting tcp_rtt20_loss5_run2
+           [tcp_rtt20_loss5_run2] status=success hash_ok=True wall=71.771s goodput=2.233743038389201 Mbit/s retx=783 srtt=0.023551   [75s]
+[06:41:11] (32/85) starting rtp_rtt20_loss10_run2
+           [rtp_rtt20_loss10_run2] status=success hash_ok=True wall=696.88s goodput=0.23030867069663472 Mbit/s retx=2468 srtt=0.020974089360326076   [700s]
+[06:52:51] (33/85) starting tcp_rtt20_loss10_run2
+           [tcp_rtt20_loss10_run2] status=success hash_ok=True wall=170.048s goodput=0.9414663568572978 Mbit/s retx=1654 srtt=0.022643999999999997   [173s]
+[06:55:45] (34/85) starting rtp_rtt100_loss0_run2
+           [rtp_rtt100_loss0_run2] status=success hash_ok=True wall=34.688s goodput=4.916884564918441 Mbit/s retx=0 srtt=0.1014184546728258   [38s]
+[06:56:23] (35/85) starting tcp_rtt100_loss0_run2
+           [tcp_rtt100_loss0_run2] status=success hash_ok=True wall=2.783s goodput=60.28665083172434 Mbit/s retx=2506 srtt=0.100779   [6s]
+[06:56:28] (36/85) starting rtp_rtt100_loss1_run2
+           [rtp_rtt100_loss1_run2] status=success hash_ok=True wall=204.836s goodput=0.7893362601418756 Mbit/s retx=233 srtt=0.10215086001010754   [208s]
+[06:59:56] (37/85) starting tcp_rtt100_loss1_run2
+           [tcp_rtt100_loss1_run2] status=success hash_ok=True wall=116.784s goodput=1.3712755534576673 Mbit/s retx=145 srtt=0.114368   [120s]
+[07:01:56] (38/85) starting rtp_rtt100_loss5_run2
+           [rtp_rtt100_loss5_run2] status=success hash_ok=True wall=558.82s goodput=0.2874127350496667 Mbit/s retx=1258 srtt=0.10111917120272557   [562s]
+[07:11:18] (39/85) starting tcp_rtt100_loss5_run2
+           [tcp_rtt100_loss5_run2] status=success hash_ok=True wall=310.377s goodput=0.5157173571678695 Mbit/s retx=778 srtt=0.10547799999999999   [313s]
+[07:16:32] (40/85) starting rtp_rtt100_loss10_run2
+           [rtp_rtt100_loss10_run2] status=success hash_ok=True wall=990.108s goodput=0.16194705216931654 Mbit/s retx=2832 srtt=0.10116686369021369   [994s]
+[07:33:05] (41/85) starting tcp_rtt100_loss10_run2
+           [tcp_rtt100_loss10_run2] status=success hash_ok=True wall=531.53s goodput=0.3010815465956894 Mbit/s retx=1596 srtt=0.103254   [535s]
+[07:42:00] (42/85) starting rtp_rtt200_loss0_run2
+           [rtp_rtt200_loss0_run2] status=success hash_ok=True wall=210.588s goodput=0.7676769581017596 Mbit/s retx=647 srtt=0.2022820676445098   [214s]
+[07:45:34] (43/85) starting tcp_rtt200_loss0_run2
+           [tcp_rtt200_loss0_run2] status=success hash_ok=True wall=5.962s goodput=27.42132863146849 Mbit/s retx=1046 srtt=0.200808   [9s]
+[07:45:43] (44/85) starting rtp_rtt200_loss1_run2
+           [rtp_rtt200_loss1_run2] status=success hash_ok=True wall=402.111s goodput=0.40000979288174765 Mbit/s retx=446 srtt=0.20159261107892343   [405s]
+[07:52:29] (45/85) starting tcp_rtt200_loss1_run2
+           [tcp_rtt200_loss1_run2] status=success hash_ok=True wall=214.56s goodput=0.7462425439912728 Mbit/s retx=125 srtt=0.200876   [218s]
+[07:56:07] (46/85) starting rtp_rtt200_loss5_run2
+           [rtp_rtt200_loss5_run2] status=success hash_ok=True wall=943.824s goodput=0.16991227488390004 Mbit/s retx=1488 srtt=0.2014660309480683   [947s]
+[08:11:54] (47/85) starting tcp_rtt200_loss5_run2
+           [tcp_rtt200_loss5_run2] status=success hash_ok=True wall=576.068s goodput=0.2777931186408768 Mbit/s retx=729 srtt=0.204071   [579s]
+[08:21:33] (48/85) starting rtp_rtt200_loss10_run2
+           [rtp_rtt200_loss10_run2] status=success hash_ok=True wall=1502.824s goodput=0.10661755340136128 Mbit/s retx=2940 srtt=0.2011185799779561   [1507s]
+[08:46:40] (49/85) starting tcp_rtt200_loss10_run2
+           [tcp_rtt200_loss10_run2] status=success hash_ok=True wall=1002.291s goodput=0.1596520598426212 Mbit/s retx=1564 srtt=0.220069   [1006s]
+[09:03:26] (50/85) starting rtp_rtt20_loss0_reo1_run2
+           [rtp_rtt20_loss0_reo1_run2] status=success hash_ok=True wall=8.408s goodput=25.552956181799427 Mbit/s retx=0 srtt=0.021522238321644287   [11s]
+[09:03:37] (51/85) starting tcp_rtt20_loss0_reo1_run2
+           [tcp_rtt20_loss0_reo1_run2] status=success hash_ok=True wall=0.518s goodput=421.9621153966129 Mbit/s retx=1764 srtt=0.020832999999999997   [4s]
+[09:03:41] (52/85) starting rtp_rtt100_loss0_reo1_run2
+           [rtp_rtt100_loss0_reo1_run2] status=success hash_ok=True wall=31.259s goodput=5.499641544019689 Mbit/s retx=0 srtt=0.1004532929840306   [34s]
+[09:04:15] (53/85) starting tcp_rtt100_loss0_reo1_run2
+           [tcp_rtt100_loss0_reo1_run2] status=success hash_ok=True wall=13.408s goodput=12.043888560111029 Mbit/s retx=4111 srtt=0.10080700000000001   [17s]
+[09:04:32] (54/85) starting rtp_rtt200_loss0_reo1_run2
+           [rtp_rtt200_loss0_reo1_run2] status=success hash_ok=True wall=108.713s goodput=1.5016687979888486 Mbit/s retx=185 srtt=0.203658121613234   [112s]
+[09:06:23] (55/85) starting tcp_rtt200_loss0_reo1_run2
+           [tcp_rtt200_loss0_reo1_run2] status=success hash_ok=True wall=4.393s goodput=37.58389296303645 Mbit/s retx=6359 srtt=0.194878   [8s]
+[09:06:31] (56/85) starting rtp_rtt20_loss0_run3
+           [rtp_rtt20_loss0_run3] status=success hash_ok=True wall=8.749s goodput=24.28398442368192 Mbit/s retx=0 srtt=0.0208426156017067   [12s]
+[09:06:43] (57/85) starting tcp_rtt20_loss0_run3
+           [tcp_rtt20_loss0_run3] status=success hash_ok=True wall=0.719s goodput=273.64827096794176 Mbit/s retx=231 srtt=0.020956   [4s]
+[09:06:47] (58/85) starting rtp_rtt20_loss1_run3
+           [rtp_rtt20_loss1_run3] status=success hash_ok=True wall=78.764s goodput=2.088053286026247 Mbit/s retx=222 srtt=0.02121008412937481   [82s]
+[09:08:08] (59/85) starting tcp_rtt20_loss1_run3
+           [tcp_rtt20_loss1_run3] status=success hash_ok=True wall=22.675s goodput=7.093607418530129 Mbit/s retx=164 srtt=0.020489   [26s]
+[09:08:34] (60/85) starting rtp_rtt20_loss5_run3
+           [rtp_rtt20_loss5_run3] status=success hash_ok=True wall=286.874s goodput=0.5619769874031787 Mbit/s retx=1081 srtt=0.021043222746488715   [290s]
+[09:13:24] (61/85) starting tcp_rtt20_loss5_run3
+           [tcp_rtt20_loss5_run3] status=success hash_ok=True wall=73.262s goodput=2.187713172322596 Mbit/s retx=790 srtt=0.021157   [77s]
+[09:14:41] (62/85) starting rtp_rtt20_loss10_run3
+           [rtp_rtt20_loss10_run3] status=success hash_ok=True wall=720.972s goodput=0.22259140711833766 Mbit/s retx=2658 srtt=0.02067215655300457   [724s]
+[09:26:45] (63/85) starting tcp_rtt20_loss10_run3
+           [tcp_rtt20_loss10_run3] status=success hash_ok=True wall=141.903s goodput=1.128383139294114 Mbit/s retx=1559 srtt=0.022289   [145s]
+[09:29:10] (64/85) starting rtp_rtt100_loss0_run3
+           [rtp_rtt100_loss0_run3] status=success hash_ok=True wall=34.457s goodput=4.954053171738451 Mbit/s retx=0 srtt=0.10069830781729161   [38s]
+[09:29:47] (65/85) starting tcp_rtt100_loss0_run3
+           [tcp_rtt100_loss0_run3] status=success hash_ok=True wall=2.431s goodput=68.72469161413649 Mbit/s retx=2956 srtt=0.100553   [6s]
+[09:29:53] (66/85) starting rtp_rtt100_loss1_run3
+           [rtp_rtt100_loss1_run3] status=success hash_ok=True wall=210.8s goodput=0.7668059897481505 Mbit/s retx=234 srtt=0.10068711867157917   [214s]
+[09:33:27] (67/85) starting tcp_rtt100_loss1_run3
+           [tcp_rtt100_loss1_run3] status=success hash_ok=True wall=116.332s goodput=1.3768652733384457 Mbit/s retx=155 srtt=0.10311100000000001   [119s]
+[09:35:26] (68/85) starting rtp_rtt100_loss5_run3
+           [rtp_rtt100_loss5_run3] status=success hash_ok=True wall=550.31s goodput=0.2918796083542106 Mbit/s retx=1209 srtt=0.10130306626636103   [553s]
+[09:44:40] (69/85) starting tcp_rtt100_loss5_run3
+           [tcp_rtt100_loss5_run3] status=success hash_ok=True wall=298.812s goodput=0.5356986631497166 Mbit/s retx=738 srtt=0.102262   [302s]
+[09:49:42] (70/85) starting rtp_rtt100_loss10_run3
+           [rtp_rtt100_loss10_run3] status=success hash_ok=True wall=1046.11s goodput=0.1532643414342024 Mbit/s retx=2964 srtt=0.10109274921688267   [1050s]
+[10:07:11] (71/85) starting tcp_rtt100_loss10_run3
+           [tcp_rtt100_loss10_run3] status=success hash_ok=True wall=522.41s goodput=0.3063346023715352 Mbit/s retx=1599 srtt=0.107981   [526s]
+[10:15:57] (72/85) starting rtp_rtt200_loss0_run3
+           [rtp_rtt200_loss0_run3] status=success hash_ok=True wall=190.351s goodput=0.8500999028006768 Mbit/s retx=575 srtt=0.20101364769035607   [194s]
+[10:19:10] (73/85) starting tcp_rtt200_loss0_run3
+           [tcp_rtt200_loss0_run3] status=success hash_ok=True wall=5.962s goodput=27.39963955264118 Mbit/s retx=1625 srtt=0.200643   [9s]
+[10:19:20] (74/85) starting rtp_rtt200_loss1_run3
+           [rtp_rtt200_loss1_run3] status=success hash_ok=True wall=386.555s goodput=0.4161951579377445 Mbit/s retx=540 srtt=0.20086362017735845   [390s]
+[10:25:49] (75/85) starting tcp_rtt200_loss1_run3
+           [tcp_rtt200_loss1_run3] status=success hash_ok=True wall=208.089s goodput=0.7692984490311321 Mbit/s retx=125 srtt=0.20153200000000002   [212s]
+[10:29:21] (76/85) starting rtp_rtt200_loss5_run3
+           [rtp_rtt200_loss5_run3] status=success hash_ok=True wall=895.236s goodput=0.17915330569887683 Mbit/s retx=1435 srtt=0.20115521951578183   [898s]
+[10:44:20] (77/85) starting tcp_rtt200_loss5_run3
+           [tcp_rtt200_loss5_run3] status=success hash_ok=True wall=577.822s goodput=0.2769700054121645 Mbit/s retx=715 srtt=0.205741   [582s]
+[10:54:01] (78/85) starting rtp_rtt200_loss10_run3
+           [rtp_rtt200_loss10_run3] status=success hash_ok=True wall=1512.068s goodput=0.10596634926246883 Mbit/s retx=2959 srtt=0.20115227757047355   [1516s]
+[11:19:17] (79/85) starting tcp_rtt200_loss10_run3
+           [tcp_rtt200_loss10_run3] status=success hash_ok=True wall=1036.658s goodput=0.15436175746254643 Mbit/s retx=1676 srtt=0.227408   [1041s]
+[11:36:38] (80/85) starting rtp_rtt20_loss0_reo1_run3
+           [rtp_rtt20_loss0_reo1_run3] status=success hash_ok=True wall=8.358s goodput=25.729464113718276 Mbit/s retx=0 srtt=0.019257716696651557   [11s]
+[11:36:49] (81/85) starting tcp_rtt20_loss0_reo1_run3
+           [tcp_rtt20_loss0_reo1_run3] status=success hash_ok=True wall=0.668s goodput=293.8007278853732 Mbit/s retx=2671 srtt=0.020567   [4s]
+[11:36:53] (82/85) starting rtp_rtt100_loss0_reo1_run3
+           [rtp_rtt100_loss0_reo1_run3] status=success hash_ok=True wall=31.453s goodput=5.460588203378967 Mbit/s retx=0 srtt=0.10005017452432527   [35s]
+[11:37:27] (83/85) starting tcp_rtt100_loss0_reo1_run3
+           [tcp_rtt100_loss0_reo1_run3] status=success hash_ok=True wall=2.33s goodput=72.17607548841514 Mbit/s retx=4107 srtt=0.09768   [5s]
+[11:37:33] (84/85) starting rtp_rtt200_loss0_reo1_run3
+           [rtp_rtt200_loss0_reo1_run3] status=success hash_ok=True wall=119.168s goodput=1.3672940435626317 Mbit/s retx=187 srtt=0.1998615589885213   [122s]
+[11:39:35] (85/85) starting tcp_rtt200_loss0_reo1_run3
+           [tcp_rtt200_loss0_reo1_run3] status=success hash_ok=True wall=9.674s goodput=16.7165418134565 Mbit/s retx=3361 srtt=0.146113   [13s]
+
+DONE in 452.7 min: {'success': 85, 'failed': 0, 'error': 0}

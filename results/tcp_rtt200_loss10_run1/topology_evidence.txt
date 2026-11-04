@@ -1,0 +1,15 @@
+== r1 ip route ==
+[1;35m10.0.1.0/24 [0mdev [1;36mr1-eth0 [0mproto kernel scope link src [1;35m10.0.1.1 [0m
+[1;35m10.0.2.0/24 [0mdev [1;36mr1-eth1 [0mproto kernel scope link src [1;35m10.0.2.1 [0m
+[1;35m10.0.3.0/24 [0mvia [1;35m10.0.2.2 [0mdev [1;36mr1-eth1 [0m
+
+== r2 ip route ==
+[1;35m10.0.1.0/24 [0mvia [1;35m10.0.2.1 [0mdev [1;36mr2-eth0 [0m
+[1;35m10.0.2.0/24 [0mdev [1;36mr2-eth0 [0mproto kernel scope link src [1;35m10.0.2.2 [0m
+[1;35m10.0.3.0/24 [0mdev [1;36mr2-eth1 [0mproto kernel scope link src [1;35m10.0.3.1 [0m
+
+== h1 traceroute ==
+traceroute to 10.0.3.10 (10.0.3.10), 30 hops max, 60 byte packets
+ 1  10.0.1.1  0.355 ms  0.304 ms  0.286 ms
+ 2  10.0.2.2  200.335 ms  200.314 ms  200.295 ms
+ 3  10.0.3.10  200.278 ms  200.260 ms  200.241 ms

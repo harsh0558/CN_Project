@@ -1,0 +1,4 @@
+netem options: delay 50ms loss 10%
+
+qdisc netem 8039: root refcnt 129 limit 1000 delay 50ms loss 10% seed 3320892267917647119
+qdisc netem 803a: root refcnt 129 limit 1000 delay 50ms loss 10% seed 15524749297707319404

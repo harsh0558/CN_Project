@@ -1,0 +1,14 @@
+{
+  "dup_received": 76,
+  "ooo_received": 4244,
+  "invalid_packets": 0,
+  "crc_errors": 0,
+  "max_occupancy": 62,
+  "sha256_ok": true,
+  "status": "success",
+  "mode": "sr",
+  "capacity": 64,
+  "app_read_rate": 0.0,
+  "seed": null,
+  "dropped_beyond_window": 0
+}

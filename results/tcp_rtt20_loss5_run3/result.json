@@ -1,0 +1,44 @@
+{
+  "tag": "tcp_rtt20_loss5_run3",
+  "protocol": "tcp",
+  "tcp_cc": "reno",
+  "rtt_ms_target": 20.0,
+  "loss_pct": 5.0,
+  "reorder_pct": 0.0,
+  "run": 3,
+  "file": "test_20mb.bin",
+  "window": 64,
+  "netem": "delay 10ms loss 5%",
+  "status": "success",
+  "sender_return_code": 0,
+  "killed_on_timeout": false,
+  "hash_ok": true,
+  "wall_time_s": 73.262,
+  "sender_summary": {
+    "file_bytes": 20000000,
+    "t_start": 23841.497841206,
+    "t_end": 23914.633571257,
+    "duration_s": 73.13573005099897,
+    "goodput_mbps": 2.187713172322596,
+    "status": "success",
+    "exit_reason": "success",
+    "protocol": "tcp",
+    "cc": "reno",
+    "retx_total": 790,
+    "final_srtt": 0.021157,
+    "tcp_info": {
+      "snd_mss": 1448,
+      "srtt_ms": 21.157,
+      "snd_ssthresh": 3,
+      "snd_cwnd_segments": 8,
+      "total_retrans": 790
+    }
+  },
+  "receiver_summary": {
+    "protocol": "tcp",
+    "bytes_received": 20000000,
+    "hash_ok": true,
+    "status": "success",
+    "exit_reason": "success"
+  }
+}

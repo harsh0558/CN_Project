@@ -1,0 +1,4 @@
+netem options: delay 10ms reorder 1%
+
+qdisc netem 8089: root refcnt 129 limit 1000 delay 10ms reorder 1% seed 7004473286120691221 gap 1
+qdisc netem 808a: root refcnt 129 limit 1000 delay 10ms reorder 1% seed 16498430445508861129 gap 1
