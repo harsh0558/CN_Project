@@ -20,3 +20,10 @@ evidence/*
 capture/*.pcap
 *.part
 scratch/
+
+# Added: large generated files and local environments
+.venv/
+*.bin
+received*/
+followup_minrto1s/**/received/
+followup_minrto1s/**/rx/*.bin
