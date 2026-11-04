@@ -45,6 +45,14 @@ def build():
 
     net.start()
 
+    # Turn off segmentation/receive offloads on every interface. With TSO/GSO/GRO on,
+    # netem sees ~64 KB "super-packets" and applies loss per super-packet, which
+    # under-penalises TCP compared with the ~1 KB RTP datagrams. Off = real MTU packets
+    # (also gives clean per-packet captures in Wireshark). Needs: sudo apt install ethtool
+    for node in (h1, h2, r1, r2):
+        for intf in node.intfNames():
+            node.cmd(f"ethtool -K {intf} tso off gso off gro off >/dev/null 2>&1")
+
     # static routes
     h1.cmd("ip route add default via 10.0.1.1")
     h2.cmd("ip route add default via 10.0.3.1")

@@ -32,7 +32,7 @@ INITIAL_SSTHRESH: int = 64           # initial ssthresh
 
 # RTO parameters (RFC 6298 adapted)
 INITIAL_RTO: float = 1.0             # 1.0 s
-MIN_RTO: float = 0.2                 # 200 ms (deviation from RFC 6298's 1.0 s)
+MIN_RTO: float = float(__import__("os").environ.get("RTP_MIN_RTO", "0.2"))  # default 0.2 s (deviation from RFC 6298's 1.0 s); env override used only for the follow-up experiment
 MAX_RTO: float = 60.0                # 60.0 s
 RTO_ALPHA: float = 1.0 / 8.0         # 0.125
 RTO_BETA: float = 1.0 / 4.0          # 0.25
