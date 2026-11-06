@@ -57,6 +57,7 @@ def main() -> int:
     ap.add_argument("--rtt", type=float, required=True, help="target RTT in ms (split equally over both directions)")
     ap.add_argument("--loss", type=float, default=0.0, help="loss percent, applied on BOTH directions")
     ap.add_argument("--reorder", type=float, default=0.0, help="reorder percent (netem), both directions")
+    ap.add_argument("--duplicate", type=float, default=0.0, help="duplicate percent (netem), both directions")
     ap.add_argument("--run", type=int, default=1, help="run number (1,2,3,...)")
     ap.add_argument("--file", default="test_20mb.bin", help="file to send (relative to project root)")
     ap.add_argument("--window", type=int, default=64, help="window size in packets (sender and receiver)")
@@ -77,6 +78,8 @@ def main() -> int:
     tag = f"{args.proto}_rtt{args.rtt:g}_loss{args.loss:g}"
     if args.reorder > 0:
         tag += f"_reo{args.reorder:g}"
+    if args.duplicate > 0:
+        tag += f"_dup{args.duplicate:g}"
     tag += f"_run{args.run}"
     run_dir = ROOT / ("capture" if args.capture else "results") / tag
     if run_dir.exists():
@@ -89,11 +92,13 @@ def main() -> int:
         netem += f" loss {args.loss:g}%"
     if args.reorder > 0:
         netem += f" reorder {args.reorder:g}%"
+    if args.duplicate > 0:
+        netem += f" duplicate {args.duplicate:g}%"
 
     setLogLevel("warning")
     net = build()
     result = {"tag": tag, "protocol": args.proto, "tcp_cc": args.cc if args.proto == "tcp" else None, "rtt_ms_target": args.rtt, "loss_pct": args.loss,
-              "reorder_pct": args.reorder, "run": args.run, "file": args.file,
+              "reorder_pct": args.reorder, "duplicate_pct": args.duplicate, "run": args.run, "file": args.file,
               "window": args.window, "netem": netem}
     rx = tx = dump_h1 = dump_h2 = None
     try:
