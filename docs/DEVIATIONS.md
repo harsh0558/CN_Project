@@ -72,3 +72,9 @@ RTP adapts the Jacobson/Karels RTT estimation equations from RFC 6298, but inten
 ## 8. Experiment-Setup Notes
 - netem loss, reordering and duplication are applied on both directions of the R1-R2 link, so ACKs are also lost, reordered and duplicated. The configured RTT is split equally over both directions and checked with ping before each run.
 - `--app-read-rate` (receiver application read rate in packets/s, default 0 = unlimited) is used only in the flow-control demonstration. All matrix runs use the unlimited default.
+
+## 9. No `tbf` Rate Limit on the R1-R2 Link
+- *Plan (proposal)*: netem (delay, loss, reorder, duplicate) plus `tc tbf` rate limiting on the R1-R2 link as the bottleneck.
+- *Actual setup*: only `netem` is applied (see `results/*/netem.txt`, `netem` field in each `result.json`). No `tbf` or any other rate limit was configured, so the link rate is limited only by the VM's virtual links.
+- *Consequence*: TCP reaches about 285 Mbit/s at 20 ms RTT and 0% loss, and RTP is limited by its 64-packet window (Section 6) and not by a bottleneck rate. Congestion-induced loss comes only from netem's default 1000-packet queue limit. TCP shows retransmissions even at 0% configured loss (1157 to 4549 on average); queue overflow at this limit is the likely cause, but this has not been verified (the qdisc drop counters were not saved).
+- *Rationale*: The instructor lists `tc netem` and `tc tbf` "where appropriate"; the required loss, delay, reordering and duplication scenarios are all provided by netem. Re-running the full matrix with a bottleneck rate was not done for time reasons.
