@@ -60,6 +60,7 @@ def main() -> int:
     ap.add_argument("--run", type=int, default=1, help="run number (1,2,3,...)")
     ap.add_argument("--file", default="test_20mb.bin", help="file to send (relative to project root)")
     ap.add_argument("--window", type=int, default=64, help="window size in packets (sender and receiver)")
+    ap.add_argument("--app-read-rate", type=float, default=0, help="receiver app read rate in packets/s (0 = unlimited)")
     ap.add_argument("--timeout", type=int, default=1800, help="protocol timeout in seconds")
     ap.add_argument("--evidence", action="store_true", help="also save routing tables + traceroute")
     ap.add_argument("--capture", action="store_true", help="capture packets on h1 and h2 with tcpdump")
@@ -123,7 +124,7 @@ def main() -> int:
         if args.proto == "rtp":
             rx_cmd = [str(PY), "-m", "app.file_receiver", "--host", "10.0.3.10", "--port", "9000",
                       "--output-dir", str(run_dir / "received"), "--timeout", str(args.timeout),
-                      "--window", str(args.window), "--run-dir", str(run_dir / "rx")]
+                      "--window", str(args.window), "--app-read-rate", str(args.app_read_rate), "--run-dir", str(run_dir / "rx")]
         else:
             rx_cmd = [str(PY), "-m", "tools.tcp_transfer", "recv", "--host", "10.0.3.10", "--port", "9000",
                       "--output-dir", str(run_dir / "received"), "--timeout", str(args.timeout),

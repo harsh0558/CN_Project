@@ -1,0 +1,4 @@
+netem options: delay 10ms
+
+qdisc netem 8009: root refcnt 129 limit 1000 delay 10ms seed 11366040522764706607
+qdisc netem 800a: root refcnt 129 limit 1000 delay 10ms seed 9679691690120446493
