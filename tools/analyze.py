@@ -73,12 +73,12 @@ def lines(metric, ylabel, fname, log=False):
             a.errorbar(t.loss, t[metric + "_mean"], yerr=t[metric + "_std"],
                        marker="o", capsize=3, label=p.upper(), color=COL[p])
         a.set_title(f"RTT {rtt} ms"); a.set_xlabel("Loss (%)"); a.grid(alpha=.3)
-        if log: a.set_yscale("log")
+        if log: a.set_yscale("symlog", linthresh=10) if log == "symlog" else a.set_yscale("log")
     ax[0].set_ylabel(ylabel); ax[0].legend()
     fig.tight_layout(); fig.savefig(f"{OUT}/{fname}", dpi=150); plt.close(fig)
 
 lines("goodput", "Goodput (Mbit/s)", "goodput_vs_loss.png", log=True)
-lines("retx", "Retransmitted packets", "retx_vs_loss.png", log=True)
+lines("retx", "Retransmitted packets", "retx_vs_loss.png", log="symlog")
 
 fig, ax = plt.subplots(1, 2, figsize=(10, 4), sharey=True)
 for a, p in zip(ax, ["rtp", "tcp"]):
